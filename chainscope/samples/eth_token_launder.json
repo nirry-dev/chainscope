@@ -1,0 +1,30 @@
+{
+  "chain": "eth",
+  "asset": "ETH",
+  "note": "Synthetic multi-asset scenario: a lending pool is drained in USDC, part is swapped to ETH and laundered through a sanctioned mixer, USDC is layered through an intermediary into a mixer and an exchange, and a USDT slice is cashed out. Demonstrates per-asset (ERC-20) flow tracing. Only the Tornado Cash pool is a real/public address.",
+  "entities": [
+    {"address": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", "label": "Lumen Lending: Pool", "entity": "Lumen Lending", "category": "defi", "risk": "none"},
+    {"address": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "label": "Exploiter EOA", "entity": "Unknown Actor", "category": "scam", "risk": "high"},
+    {"address": "0xc3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3", "label": "DEX Router", "entity": "AstraSwap", "category": "defi", "risk": "none"},
+    {"address": "0xd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4", "label": "Intermediary", "entity": "Unknown Actor", "category": "individual", "risk": "none"},
+    {"address": "0xe5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5", "label": "Zenith: Deposit 0xe5", "entity": "Zenith", "category": "exchange", "risk": "low"}
+  ],
+  "addresses": [
+    {"address": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", "holdings": {"USDC": 3000000}, "seed": true, "tags": ["victim"]},
+    {"address": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "holdings": {"USDC": 300000, "ETH": 100}, "tags": ["exploit-origin"]},
+    {"address": "0xc3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3", "holdings": {"USDC": 800000, "ETH": 900}},
+    {"address": "0xd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4", "holdings": {"USDC": 20000}},
+    {"address": "0xa160cdab225685da1d56aa342ad8841c3b53f291", "holdings": {"ETH": 101234, "USDC": 600000}},
+    {"address": "0xe5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5", "holdings": {"USDC": 280000, "USDT": 150000}}
+  ],
+  "transfers": [
+    {"txid": "0xtk01", "src": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", "dst": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "value": 2000000, "asset": "USDC", "ts": "2026-03-04T01:10:00Z", "block": 2100001},
+    {"txid": "0xtk02", "src": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "dst": "0xc3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3", "value": 800000, "asset": "USDC", "ts": "2026-03-04T01:40:00Z", "block": 2100120},
+    {"txid": "0xtk03", "src": "0xc3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3", "dst": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "value": 300, "asset": "ETH", "ts": "2026-03-04T01:41:00Z", "block": 2100121},
+    {"txid": "0xtk04", "src": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "dst": "0xa160cdab225685da1d56aa342ad8841c3b53f291", "value": 200, "asset": "ETH", "ts": "2026-03-04T03:05:00Z", "block": 2100500},
+    {"txid": "0xtk05", "src": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "dst": "0xd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4", "value": 900000, "asset": "USDC", "ts": "2026-03-04T03:20:00Z", "block": 2100540},
+    {"txid": "0xtk06", "src": "0xd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4", "dst": "0xa160cdab225685da1d56aa342ad8841c3b53f291", "value": 600000, "asset": "USDC", "ts": "2026-03-04T05:00:00Z", "block": 2101000},
+    {"txid": "0xtk07", "src": "0xd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4", "dst": "0xe5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5", "value": 280000, "asset": "USDC", "ts": "2026-03-05T09:30:00Z", "block": 2104800},
+    {"txid": "0xtk08", "src": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "dst": "0xe5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5", "value": 150000, "asset": "USDT", "ts": "2026-03-05T10:15:00Z", "block": 2104900}
+  ]
+}

@@ -162,7 +162,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, analyze.ingest(conn, cid, data, source=src))
 
             if sub == ["graph"]:
-                return self._json(200, analyze.graph_view(conn, cid, chain))
+                asset = q.get("asset", [None])[0] or None
+                return self._json(200, analyze.graph_view(conn, cid, chain, asset=asset))
+
+            if sub == ["assets"]:
+                return self._json(200, {"assets": store.assets(conn, cid, chain)})
 
             if sub == ["trace"]:
                 seed = q.get("seed", [None])[0]
@@ -171,7 +175,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, analyze.trace_flow(
                     conn, cid, chain, seed, hops=int(q.get("hops", ["3"])[0]),
                     direction=q.get("direction", ["out"])[0],
-                    min_value=float(q.get("min", ["0"])[0])))
+                    min_value=float(q.get("min", ["0"])[0]),
+                    asset=q.get("asset", [None])[0] or None))
 
             if sub == ["address"]:
                 addr = q.get("address", [None])[0]

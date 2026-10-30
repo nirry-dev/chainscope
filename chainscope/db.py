@@ -65,6 +65,16 @@ CREATE TABLE IF NOT EXISTS chain_transfers (
 CREATE INDEX IF NOT EXISTS ix_xfer_src ON chain_transfers(case_id, chain, src);
 CREATE INDEX IF NOT EXISTS ix_xfer_dst ON chain_transfers(case_id, chain, dst);
 
+CREATE TABLE IF NOT EXISTS chain_holdings (
+    id       INTEGER PRIMARY KEY,
+    case_id  INTEGER NOT NULL,
+    chain    TEXT NOT NULL,
+    address  TEXT NOT NULL,
+    asset    TEXT NOT NULL,              -- ETH | USDT | USDC | ...
+    balance  REAL NOT NULL DEFAULT 0,
+    UNIQUE(case_id, chain, address, asset)
+);
+
 CREATE TABLE IF NOT EXISTS flags (
     id          INTEGER PRIMARY KEY,
     case_id     INTEGER NOT NULL,

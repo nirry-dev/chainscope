@@ -28,12 +28,22 @@ def ingest(conn, case_id, data, source="sample"):
             conn, case_id, chain, e["address"], label=e.get("label"),
             entity=e.get("entity"), category=cat, risk=risk, source=source)
 
-    # 2. addresses with balances / seed flags / tags
+    # 2. addresses with balances / seed flags / tags. `holdings` is a per-asset
+    #    map {ASSET: balance}; a bare `balance` is treated as the native asset.
     for a in data.get("addresses", []):
+        hold = a.get("holdings") or {}
+        native_bal = a.get("balance")
+        if native_bal is None and asset in hold:
+            native_bal = hold[asset]
         store.upsert_address(
-            conn, case_id, chain, a["address"], balance=a.get("balance"),
+            conn, case_id, chain, a["address"], balance=native_bal,
             asset=asset, source=source, tags=a.get("tags"),
             seed=a.get("seed"), note=a.get("note"))
+        if hold:
+            for asym, bal in hold.items():
+                store.set_holding(conn, case_id, chain, a["address"], asym, bal)
+        elif native_bal is not None:
+            store.set_holding(conn, case_id, chain, a["address"], asset, native_bal)
 
     # 3. transfers (auto-create endpoints we haven't seen)
     seen = {r["address"] for r in store.list_addresses(conn, case_id, chain)}
@@ -63,14 +73,17 @@ def ingest(conn, case_id, data, source="sample"):
 
 # --- metrics -------------------------------------------------------------
 
-def address_metrics(conn, case_id, chain, address):
-    """In/out value + counts + counterparties for one address."""
+def address_metrics(conn, case_id, chain, address, asset=None):
+    """In/out value + counts + counterparties for one address. Pass `asset` to
+    restrict the value/count totals to a single token/coin."""
+    af = " AND asset=?" if asset else ""
+    ap = [asset] if asset else []
     out = conn.execute(
         "SELECT COUNT(*) n, COALESCE(SUM(value),0) v FROM chain_transfers "
-        "WHERE case_id=? AND chain=? AND src=?", (case_id, chain, address)).fetchone()
+        "WHERE case_id=? AND chain=? AND src=?" + af, [case_id, chain, address] + ap).fetchone()
     inn = conn.execute(
         "SELECT COUNT(*) n, COALESCE(SUM(value),0) v FROM chain_transfers "
-        "WHERE case_id=? AND chain=? AND dst=?", (case_id, chain, address)).fetchone()
+        "WHERE case_id=? AND chain=? AND dst=?" + af, [case_id, chain, address] + ap).fetchone()
     cps = conn.execute(
         "SELECT COUNT(DISTINCT cp) n FROM ("
         "  SELECT dst cp FROM chain_transfers WHERE case_id=? AND chain=? AND src=? "
@@ -79,6 +92,20 @@ def address_metrics(conn, case_id, chain, address):
     return {"out_value": out["v"], "out_count": out["n"],
             "in_value": inn["v"], "in_count": inn["n"],
             "counterparties": cps["n"]}
+
+
+def asset_breakdown(conn, case_id, chain, address):
+    """Per-asset received/sent totals for one address."""
+    rows = {}
+    for r in conn.execute(
+            "SELECT asset, COALESCE(SUM(value),0) v, COUNT(*) n FROM chain_transfers "
+            "WHERE case_id=? AND chain=? AND dst=? GROUP BY asset", (case_id, chain, address)):
+        rows.setdefault(r["asset"], {"recv": 0, "sent": 0})["recv"] = r["v"]
+    for r in conn.execute(
+            "SELECT asset, COALESCE(SUM(value),0) v, COUNT(*) n FROM chain_transfers "
+            "WHERE case_id=? AND chain=? AND src=? GROUP BY asset", (case_id, chain, address)):
+        rows.setdefault(r["asset"], {"recv": 0, "sent": 0})["sent"] = r["v"]
+    return [{"asset": a, **v} for a, v in rows.items()]
 
 
 def counterparties(conn, case_id, chain, address):
@@ -112,18 +139,22 @@ def inspect(conn, case_id, chain, address):
         return None
     a["metrics"] = address_metrics(conn, case_id, chain, address)
     a["counterparties"] = counterparties(conn, case_id, chain, address)
+    a["holdings"] = store.holdings(conn, case_id, chain, address)
+    a["by_asset"] = asset_breakdown(conn, case_id, chain, address)
     return a
 
 
 # --- flow tracing --------------------------------------------------------
 
-def trace_flow(conn, case_id, chain, seed, hops=3, direction="out", min_value=0.0):
+def trace_flow(conn, case_id, chain, seed, hops=3, direction="out", min_value=0.0,
+               asset=None):
     """Breadth-first 'follow the money' from a seed address.
 
     direction: 'out' (where funds went), 'in' (where they came from), 'both'.
+    asset: restrict the trace to a single token/coin.
     Returns a subgraph {nodes, edges} suitable for the flow-graph visualizer,
     each node carrying its hop distance from the seed and its label/risk."""
-    edges_all = store.edges_aggregated(conn, case_id, chain)
+    edges_all = store.edges_aggregated(conn, case_id, chain, asset=asset)
     fwd, rev = {}, {}
     for e in edges_all:
         if (e["total"] or 0) < min_value:
@@ -155,7 +186,7 @@ def trace_flow(conn, case_id, chain, seed, hops=3, direction="out", min_value=0.
     nodes = []
     for addr, h in hop.items():
         a = store.get_address(conn, case_id, chain, addr) or {"address": addr}
-        m = address_metrics(conn, case_id, chain, addr)
+        m = address_metrics(conn, case_id, chain, addr, asset=asset)
         nodes.append({
             "address": addr, "hop": h,
             "label": a.get("label"), "entity": a.get("entity"),
@@ -170,15 +201,18 @@ def trace_flow(conn, case_id, chain, seed, hops=3, direction="out", min_value=0.
     edges = [{"src": e["src"], "dst": e["dst"], "asset": e["asset"],
               "value": e["total"], "count": e["n"]} for e in kept_edges.values()]
     return {"seed": seed, "chain": chain, "hops": hops, "direction": direction,
+            "asset": asset, "assets": store.assets(conn, case_id, chain),
             "nodes": nodes, "edges": edges}
 
 
-def graph_view(conn, case_id, chain):
+def graph_view(conn, case_id, chain, asset=None):
     """The full chain graph for a case (all nodes + aggregated edges), enriched
-    with per-node metrics. The default visualizer view."""
-    g = {"nodes": [], "edges": [], "chain": chain}
+    with per-node metrics. `asset` restricts edges/metrics to one token/coin.
+    The default visualizer view."""
+    g = {"nodes": [], "edges": [], "chain": chain, "asset": asset,
+         "assets": store.assets(conn, case_id, chain)}
     for a in store.list_addresses(conn, case_id, chain):
-        m = address_metrics(conn, case_id, chain, a["address"])
+        m = address_metrics(conn, case_id, chain, a["address"], asset=asset)
         g["nodes"].append({
             "address": a["address"], "hop": 0 if a.get("seed") else 1,
             "label": a.get("label"), "entity": a.get("entity"),
@@ -189,7 +223,7 @@ def graph_view(conn, case_id, chain):
             "tx_count": a.get("tx_count", 0),
             "taint": a.get("taint", 0), "taint_src": a.get("taint_src"),
             "taint_hops": a.get("taint_hops")})
-    for e in store.edges_aggregated(conn, case_id, chain):
+    for e in store.edges_aggregated(conn, case_id, chain, asset=asset):
         g["edges"].append({"src": e["src"], "dst": e["dst"],
                            "asset": e["asset"], "value": e["total"],
                            "count": e["n"]})

@@ -14,7 +14,7 @@ const CAT_COLOR = {
 const FLAGGED = new Set(["mixer", "tumbler", "scam", "sanctioned", "darkmarket", "ransomware"]);
 const SEV_COLOR = { critical: "#ef4444", high: "#f87171", medium: "#fbbf24", low: "#4da3ff" };
 
-let currentCase = null, chain = "eth";
+let currentCase = null, chain = "eth", asset = "";  // asset "" = all assets
 let nodes = [], edges = [], nodeById = {}, adj = {};
 let running = false, frozen = false, raf = null, heat = 1;
 let view = { x: 0, y: 0, k: 1 };
@@ -75,9 +75,17 @@ function opt(v, t) { const o = document.createElement("option"); o.value = v; o.
 
 // ---------- data load ----------
 async function refreshAll() {
-  const g = await api(`/api/cases/${currentCase}/graph?chain=${chain}`);
+  const g = await api(`/api/cases/${currentCase}/graph?chain=${chain}&asset=${encodeURIComponent(asset)}`);
+  populateAssets(g.assets || []);
   ingestGraph(g);
   await loadFlags();
+}
+function populateAssets(assets) {
+  const sel = document.getElementById("assetSelect");
+  const cur = asset;
+  sel.innerHTML = '<option value="">all assets</option>' +
+    assets.map(a => `<option value="${esc(a.asset)}">${esc(a.asset)} (${a.n})</option>`).join("");
+  if (assets.find(a => a.asset === cur) || cur === "") sel.value = cur; else { asset = ""; sel.value = ""; }
 }
 function ingestGraph(g) {
   const prev = {}; for (const n of nodes) prev[n.address] = n;
@@ -103,17 +111,20 @@ function ingestGraph(g) {
   draw();
 }
 function computeScales() {
-  let maxVol = 1, maxEdge = 1;
-  for (const n of nodes) maxVol = Math.max(maxVol, (n.in_value || 0) + (n.out_value || 0));
-  for (const e of edges) maxEdge = Math.max(maxEdge, e.value || 0);
+  // With a single asset selected, scale by value; across all assets values
+  // aren't comparable (2M USDC vs 200 ETH), so scale by transfer count instead.
+  const byValue = !!asset;
+  let maxNode = 1, maxEdge = 1;
+  for (const n of nodes) maxNode = Math.max(maxNode, byValue ? (n.in_value || 0) + (n.out_value || 0) : (n.tx_count || 0));
+  for (const e of edges) maxEdge = Math.max(maxEdge, byValue ? (e.value || 0) : (e.count || 0));
   for (const n of nodes) {
-    const v = (n.in_value || 0) + (n.out_value || 0);
-    n.r = 9 + 20 * Math.sqrt(v / maxVol);
+    const v = byValue ? (n.in_value || 0) + (n.out_value || 0) : (n.tx_count || 0);
+    n.r = 9 + 20 * Math.sqrt(v / maxNode);
     n.color = (n.risk === "sanctioned" || FLAGGED.has(n.category)) ? CAT_COLOR.mixer
       : (CAT_COLOR[n.category] || CAT_COLOR.unknown);
   }
   for (const e of edges) {
-    e.w = 1.2 + 5 * ((e.value || 0) / maxEdge);
+    e.w = 1.2 + 5 * ((byValue ? (e.value || 0) : (e.count || 0)) / maxEdge);
     const d = nodeById[e.dst];
     e.flagged = d && (FLAGGED.has(d.category) || d.risk === "sanctioned");
   }
@@ -355,6 +366,18 @@ function renderInspector(a) {
       <td class="num recv">${c.recv ? "+" + fmt(c.recv) : ""}</td>
       <td class="num sent">${c.sent ? "−" + fmt(c.sent) : ""}</td></tr>`;
   }).join("");
+  // merge per-asset holdings + in/out flows into one table
+  const am = {};
+  (a.holdings || []).forEach(h => (am[h.asset] = am[h.asset] || {}).held = h.balance);
+  (a.by_asset || []).forEach(b => { const o = am[b.asset] = am[b.asset] || {}; o.recv = b.recv; o.sent = b.sent; });
+  const assetRows = Object.keys(am).sort().map(sym => {
+    const v = am[sym];
+    return `<tr><td><b>${esc(sym)}</b></td>
+      <td class="num">${v.held != null ? fmt(v.held) : "—"}</td>
+      <td class="num recv">${v.recv ? "+" + fmt(v.recv) : ""}</td>
+      <td class="num sent">${v.sent ? "−" + fmt(v.sent) : ""}</td></tr>`;
+  }).join("");
+
   box.className = "inspector insp";
   box.innerHTML = `
     <div class="insp-head">
@@ -374,10 +397,9 @@ function renderInspector(a) {
       <div class="kpi"><div class="v">${m.tx_count ?? a.tx_count ?? 0}</div><div class="k">txns</div></div>
       <div class="kpi"><div class="v">${m.counterparties || 0}</div><div class="k">peers</div></div>
     </div>
-    <div class="kpi-row">
-      <div class="kpi"><div class="v recv">+${fmt(m.in_value)}</div><div class="k">received</div></div>
-      <div class="kpi"><div class="v sent">−${fmt(m.out_value)}</div><div class="k">sent</div></div>
-    </div>
+    <h4>Assets held &amp; moved</h4>
+    <table class="cp-tbl"><thead><tr><th>asset</th><th class="num">held</th><th class="num">in</th><th class="num">out</th></tr></thead>
+      <tbody>${assetRows || '<tr><td colspan="4" class="hint">none</td></tr>'}</tbody></table>
     <h4>Counterparties</h4>
     <table class="cp-tbl"><thead><tr><th>address</th><th class="num">in</th><th class="num">out</th></tr></thead>
       <tbody>${cps || '<tr><td colspan="3" class="hint">none</td></tr>'}</tbody></table>
@@ -451,8 +473,8 @@ async function doTrace() {
   const hops = document.getElementById("traceHops").value;
   const dir = document.getElementById("traceDir").value;
   try {
-    const g = await api(`/api/cases/${currentCase}/trace?chain=${chain}&seed=${encodeURIComponent(seed)}&hops=${hops}&direction=${dir}`);
-    selected = seed; ingestGraph(g); setTimeout(fit, 450);
+    const g = await api(`/api/cases/${currentCase}/trace?chain=${chain}&seed=${encodeURIComponent(seed)}&hops=${hops}&direction=${dir}&asset=${encodeURIComponent(asset)}`);
+    selected = seed; populateAssets(g.assets || []); ingestGraph(g); setTimeout(fit, 450);
     toast(`traced ${g.nodes.length} wallets, ${g.edges.length} flows`);
   } catch (e) { toast("trace failed: " + e.message); }
 }
@@ -506,7 +528,8 @@ function wire() {
     const { id } = await api("/api/cases", "POST", { name });
     currentCase = id; selected = null; await loadCases(); await refreshAll(); toast("case #" + id + " created");
   };
-  document.getElementById("chainSelect").onchange = async (e) => { chain = e.target.value; await refreshAll(); setTimeout(fit, 450); };
+  document.getElementById("chainSelect").onchange = async (e) => { chain = e.target.value; asset = ""; await refreshAll(); setTimeout(fit, 450); };
+  document.getElementById("assetSelect").onchange = async (e) => { asset = e.target.value; await refreshAll(); setTimeout(fit, 450); };
   document.getElementById("loadSampleBtn").onclick = loadSample;
   document.getElementById("liveSource").onchange = (e) => {
     const evm = e.target.value === "evm";

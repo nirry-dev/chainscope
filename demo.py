@@ -76,6 +76,23 @@ def main():
                        (cid,)).fetchone()["c"]
     print(f"   after re-run: {new2} new / {merged2} merged flags, {tot} transfers (no dupes)")
 
+    hr("8. Multi-asset (ERC-20) token flows")
+    cid2 = db.create_case(conn, "Token launder demo")
+    analyze.ingest(conn, cid2, sources.load_sample("eth_token_launder"))
+    print("   assets in case:", [f"{a['asset']}({a['n']})" for a in store.assets(conn, cid2, "eth")])
+    ex = "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+    info = analyze.inspect(conn, cid2, "eth", ex)
+    print("   exploiter holdings:", {h["asset"]: h["balance"] for h in info["holdings"]})
+    print("   exploiter by-asset:",
+          {b["asset"]: f"+{b['recv']:g}/-{b['sent']:g}" for b in info["by_asset"]})
+    for asset in ("USDC", "ETH", "USDT"):
+        tr = analyze.trace_flow(conn, cid2, "eth", ex, hops=3, direction="out", asset=asset)
+        print(f"   {asset:>4} outflow trace: {len(tr['nodes'])} nodes / {len(tr['edges'])} edges")
+    analyze.risk_scan(conn, cid2, "eth")
+    print("   token-flow flags:")
+    for f in store.list_flags(conn, cid2):
+        print(f"     [{f['severity']:>8}] {f['title']}")
+
     print("\nOK - chainscope works end to end, offline.")
 
 

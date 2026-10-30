@@ -159,14 +159,47 @@ def list_transfers(conn, case_id, chain, address=None, limit=500):
     return [dict(r) for r in cur.fetchall()]
 
 
-def edges_aggregated(conn, case_id, chain):
-    """Collapse raw transfers into directed (src,dst) edges with total value and
-    a transfer count — the shape the flow-graph visualizer draws."""
+def edges_aggregated(conn, case_id, chain, asset=None):
+    """Collapse raw transfers into directed (src,dst,asset) edges with total
+    value and a transfer count — the shape the flow-graph visualizer draws.
+    Pass `asset` to restrict to a single token/coin."""
+    q = ("SELECT src, dst, asset, COUNT(*) n, SUM(value) total, "
+         "       MIN(ts) first_ts, MAX(ts) last_ts "
+         "FROM chain_transfers WHERE case_id=? AND chain=?")
+    params = [case_id, chain]
+    if asset:
+        q += " AND asset=?"
+        params.append(asset)
+    q += " GROUP BY src, dst, asset"
+    return [dict(r) for r in conn.execute(q, params).fetchall()]
+
+
+# --- holdings (per-asset balances) --------------------------------------
+
+def set_holding(conn, case_id, chain, address, asset, balance):
+    conn.execute(
+        "INSERT INTO chain_holdings (case_id, chain, address, asset, balance) "
+        "VALUES (?,?,?,?,?) "
+        "ON CONFLICT(case_id, chain, address, asset) DO UPDATE SET balance=excluded.balance",
+        (case_id, chain, address, asset, balance))
+    conn.commit()
+
+
+def holdings(conn, case_id, chain, address):
     cur = conn.execute(
-        "SELECT src, dst, asset, COUNT(*) n, SUM(value) total, "
-        "       MIN(ts) first_ts, MAX(ts) last_ts "
-        "FROM chain_transfers WHERE case_id=? AND chain=? "
-        "GROUP BY src, dst, asset", (case_id, chain))
+        "SELECT asset, balance FROM chain_holdings "
+        "WHERE case_id=? AND chain=? AND address=? ORDER BY balance DESC",
+        (case_id, chain, address))
+    return [dict(r) for r in cur.fetchall()]
+
+
+def assets(conn, case_id, chain):
+    """Distinct assets seen in this case (from transfers), with transfer count
+    and total moved — drives the UI asset selector."""
+    cur = conn.execute(
+        "SELECT asset, COUNT(*) n, SUM(value) total FROM chain_transfers "
+        "WHERE case_id=? AND chain=? GROUP BY asset ORDER BY n DESC",
+        (case_id, chain))
     return [dict(r) for r in cur.fetchall()]
 
 
