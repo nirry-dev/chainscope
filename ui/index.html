@@ -8,86 +8,116 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="logo">◈</span> chainscope
-      <span class="muted">on-chain OSINT / fund tracing</span></div>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="13" class="m-ring" />
+        <circle cx="16" cy="16" r="3.4" class="m-core" />
+        <circle cx="6.5" cy="11" r="2.1" class="m-sat" />
+        <circle cx="25" cy="21" r="2.1" class="m-sat" />
+        <line x1="8.3" y1="12" x2="13.2" y2="15" class="m-link" />
+        <line x1="18.9" y1="17.3" x2="23.1" y2="20" class="m-link" />
+      </svg>
+      <span class="brand-name">chainscope</span>
+      <span class="brand-sub">on-chain OSINT</span>
+    </div>
     <div class="spacer"></div>
-    <select id="caseSelect" title="Active case"></select>
-    <button id="newCaseBtn" class="btn" title="New investigation">+ case</button>
-    <select id="chainSelect" title="Chain">
-      <option value="eth">ethereum</option>
-      <option value="btc">bitcoin</option>
-    </select>
-    <span id="apiState" class="pill pill-off">engine ?</span>
+    <div class="ctrl-group">
+      <label class="ctrl"><span class="ctrl-k">case</span>
+        <select id="caseSelect" title="Active investigation"></select></label>
+      <button id="newCaseBtn" class="btn icon" title="New investigation">+</button>
+      <label class="ctrl"><span class="ctrl-k">chain</span>
+        <select id="chainSelect" title="Chain">
+          <option value="eth">ethereum</option>
+          <option value="btc">bitcoin</option>
+        </select></label>
+    </div>
+    <span id="apiState" class="status status-off"><span class="dot"></span><span class="status-t">engine ?</span></span>
   </header>
 
   <div class="wrap">
     <aside class="sidebar">
-      <div class="sect">
+      <section class="card">
         <h3>Load data</h3>
         <div class="row">
-          <select id="sampleSelect"></select>
+          <select id="sampleSelect" class="grow"></select>
           <button id="loadSampleBtn" class="btn primary">Load</button>
         </div>
-        <div class="hint">Bundled sample datasets (offline, no keys).</div>
-      </div>
+        <p class="hint">Bundled sample datasets — offline, no keys.</p>
+      </section>
 
-      <div class="sect">
+      <section class="card">
         <h3>Live import</h3>
-        <div class="row"><input id="liveAddr" placeholder="wallet address" /></div>
-        <div class="row">
-          <select id="liveSource">
+        <input id="liveAddr" class="full" placeholder="wallet address" />
+        <div class="row" style="margin-top:6px">
+          <select id="liveSource" class="grow">
             <option value="esplora">BTC · esplora (keyless)</option>
-            <option value="evm">EVM · explorer (needs key)</option>
+            <option value="evm">EVM · explorer (key)</option>
           </select>
           <button id="liveBtn" class="btn">Fetch</button>
         </div>
-        <input id="evmBase" class="full" placeholder="EVM api base URL" style="display:none;margin-top:6px" />
-        <input id="evmKey" class="full" placeholder="EVM api key" style="display:none;margin-top:6px" />
-        <div class="hint">Best-effort — needs network egress.</div>
-      </div>
+        <input id="evmBase" class="full mt" placeholder="EVM api base URL" style="display:none" />
+        <input id="evmKey" class="full mt" placeholder="EVM api key" style="display:none" />
+        <p class="hint">Best-effort — needs network egress.</p>
+      </section>
 
-      <div class="sect">
+      <section class="card">
         <h3>Trace flow</h3>
-        <div class="row"><input id="seedAddr" placeholder="seed address" /></div>
-        <div class="row">
-          <select id="traceDir">
+        <input id="seedAddr" class="full" placeholder="seed address" />
+        <div class="row mt">
+          <select id="traceDir" class="grow">
             <option value="out">outflow →</option>
             <option value="in">inflow ←</option>
             <option value="both">both ↔</option>
           </select>
-          <select id="traceHops">
+          <select id="traceHops" title="hop depth">
             <option>1</option><option>2</option><option selected>3</option>
             <option>4</option><option>5</option>
           </select>
         </div>
-        <button id="traceBtn" class="btn primary full">Trace</button>
-        <button id="showAllBtn" class="btn ghost full" style="margin-top:6px">Show full graph</button>
-      </div>
+        <div class="row mt">
+          <button id="traceBtn" class="btn primary grow">Trace</button>
+          <button id="showAllBtn" class="btn ghost" title="Show the full graph">All</button>
+        </div>
+      </section>
 
-      <div class="sect">
-        <h3>Risk</h3>
-        <button id="riskBtn" class="btn danger full">Run risk scan</button>
-        <div id="riskMsg" class="hint"></div>
-      </div>
-
-      <div class="sect" style="border:0">
-        <h3>Risk flags</h3>
-        <div id="flagsList" class="findings"></div>
-      </div>
+      <section class="card">
+        <div class="card-head">
+          <h3>Risk</h3>
+          <button id="riskBtn" class="btn danger sm">Run scan</button>
+        </div>
+        <div id="riskSummary" class="risk-summary"></div>
+        <div id="flagsList" class="flags"></div>
+      </section>
     </aside>
 
     <div class="stage">
       <svg id="graph"></svg>
-      <div class="toolbar">
-        <button id="fitBtn" class="btn ghost" title="Fit to view">⤢ fit</button>
-        <button id="freezeBtn" class="btn ghost" title="Pause layout">⏸ freeze</button>
+
+      <div class="stage-top">
+        <div class="search">
+          <svg viewBox="0 0 16 16" class="s-ico" aria-hidden="true"><circle cx="7" cy="7" r="5"/><line x1="11" y1="11" x2="14.5" y2="14.5"/></svg>
+          <input id="search" placeholder="find address or entity…" autocomplete="off" />
+        </div>
       </div>
+
+      <div class="toolbar">
+        <button id="zoomInBtn" class="tool" title="Zoom in">+</button>
+        <button id="zoomOutBtn" class="tool" title="Zoom out">−</button>
+        <button id="fitBtn" class="tool" title="Fit to view">⤢</button>
+        <button id="freezeBtn" class="tool" title="Pause layout">❚❚</button>
+      </div>
+
       <div class="legend" id="legend"></div>
+      <div id="tooltip" class="tooltip"></div>
       <div id="toast" class="toast"></div>
     </div>
 
     <aside class="inspector" id="inspector">
-      <div class="empty">Click a node to inspect a wallet.<br>Load a sample to begin.</div>
+      <div class="insp-empty">
+        <div class="insp-empty-art">◈</div>
+        <p>Load a dataset, then click any wallet to trace it.</p>
+        <button class="btn primary js-load" id="emptyLoadBtn">Load sample</button>
+      </div>
     </aside>
   </div>
 
