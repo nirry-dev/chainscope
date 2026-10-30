@@ -16,7 +16,7 @@ import posixpath
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from chainscope import db, store, analyze, labels, sources
+from chainscope import db, store, analyze, labels, sources, report
 
 DB_PATH = os.environ.get("CHAINSCOPE_DB", "chainscope.db")
 UI_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui")
@@ -229,6 +229,12 @@ class Handler(BaseHTTPRequestHandler):
 
             if sub == ["flags"]:
                 return self._json(200, {"flags": store.list_flags(conn, cid)})
+
+            if sub == ["report"]:
+                fmt = q.get("format", ["md"])[0]
+                if fmt == "json":
+                    return self._json(200, report.build_json(conn, cid, chain))
+                return self._json(200, {"markdown": report.build_markdown(conn, cid, chain)})
 
         return self._json(404, {"error": "not found", "path": self.path})
 

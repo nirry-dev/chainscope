@@ -584,6 +584,21 @@ async function doFindPath() {
     toast(`path found: ${r.hops} hops`);
   } catch (e) { msg.textContent = e.message; }
 }
+async function exportReport(fmt) {
+  try {
+    const data = await api(`/api/cases/${currentCase}/report?chain=${chain}&format=${fmt}`);
+    const content = fmt === "json" ? JSON.stringify(data, null, 2) : data.markdown;
+    const mime = fmt === "json" ? "application/json" : "text/markdown";
+    downloadFile(`chainscope-case${currentCase}.${fmt === "json" ? "json" : "md"}`, content, mime);
+    toast("report exported");
+  } catch (e) { toast("export failed: " + e.message); }
+}
+function downloadFile(name, content, mime) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([content], { type: mime }));
+  a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
 function doSearch() {
   const q = document.getElementById("search").value.trim().toLowerCase();
   if (!q) return;
@@ -705,6 +720,8 @@ function wire() {
   document.getElementById("search").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
   document.getElementById("zoomInBtn").onclick = () => zoomAround(W / 2, H / 2, 1.2);
   document.getElementById("zoomOutBtn").onclick = () => zoomAround(W / 2, H / 2, 0.83);
+  document.getElementById("exportMdBtn").onclick = () => exportReport("md");
+  document.getElementById("exportJsonBtn").onclick = () => exportReport("json");
   document.getElementById("tlPlay").onclick = tlToggle;
   const track = document.getElementById("tlTrack");
   const curFromX = (ev) => { const r = track.getBoundingClientRect(); let f = (ev.clientX - r.left) / r.width; f = Math.max(0, Math.min(1, f)); setCursor(tlMin + f * (tlMax - tlMin)); };

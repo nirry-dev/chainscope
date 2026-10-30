@@ -8,7 +8,7 @@ Proves: create a case -> load sample -> ingest into the graph -> wallet metrics
 import os
 import tempfile
 
-from chainscope import db, sources, analyze, store
+from chainscope import db, sources, analyze, store, report
 
 
 def hr(t):
@@ -100,6 +100,14 @@ def main():
     full = analyze.graph_view(conn, cid2, "eth")
     print(f"   graph before 01:41: {len(early['nodes'])} nodes / {len(early['edges'])} edges")
     print(f"   graph full:         {len(full['nodes'])} nodes / {len(full['edges'])} edges")
+
+    hr("10. Evidence report (export)")
+    analyze.taint_scan(conn, cid2, "eth")
+    j = report.build_json(conn, cid2, "eth")
+    md = report.build_markdown(conn, cid2, "eth")
+    print(f"   json summary: {j['summary']['wallets']} wallets, {j['summary']['transactions']} txns, "
+          f"{j['summary']['flags']} flags, {j['summary']['tainted_wallets']} tainted")
+    print(f"   markdown: {len(md)} chars / {md.count(chr(10)) + 1} lines; title -> {md.splitlines()[0]}")
 
     print("\nOK - chainscope works end to end, offline.")
 
