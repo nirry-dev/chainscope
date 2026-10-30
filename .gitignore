@@ -1,0 +1,19 @@
+# databases / local state
+*.db
+*.sqlite
+*.sqlite3
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# editors / os
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

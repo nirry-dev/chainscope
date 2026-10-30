@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chainscope</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">◈</span> chainscope
+      <span class="muted">on-chain OSINT / fund tracing</span></div>
+    <div class="spacer"></div>
+    <select id="caseSelect" title="Active case"></select>
+    <button id="newCaseBtn" class="btn" title="New investigation">+ case</button>
+    <select id="chainSelect" title="Chain">
+      <option value="eth">ethereum</option>
+      <option value="btc">bitcoin</option>
+    </select>
+    <span id="apiState" class="pill pill-off">engine ?</span>
+  </header>
+
+  <div class="wrap">
+    <aside class="sidebar">
+      <div class="sect">
+        <h3>Load data</h3>
+        <div class="row">
+          <select id="sampleSelect"></select>
+          <button id="loadSampleBtn" class="btn primary">Load</button>
+        </div>
+        <div class="hint">Bundled sample datasets (offline, no keys).</div>
+      </div>
+
+      <div class="sect">
+        <h3>Live import</h3>
+        <div class="row"><input id="liveAddr" placeholder="wallet address" /></div>
+        <div class="row">
+          <select id="liveSource">
+            <option value="esplora">BTC · esplora (keyless)</option>
+            <option value="evm">EVM · explorer (needs key)</option>
+          </select>
+          <button id="liveBtn" class="btn">Fetch</button>
+        </div>
+        <input id="evmBase" class="full" placeholder="EVM api base URL" style="display:none;margin-top:6px" />
+        <input id="evmKey" class="full" placeholder="EVM api key" style="display:none;margin-top:6px" />
+        <div class="hint">Best-effort — needs network egress.</div>
+      </div>
+
+      <div class="sect">
+        <h3>Trace flow</h3>
+        <div class="row"><input id="seedAddr" placeholder="seed address" /></div>
+        <div class="row">
+          <select id="traceDir">
+            <option value="out">outflow →</option>
+            <option value="in">inflow ←</option>
+            <option value="both">both ↔</option>
+          </select>
+          <select id="traceHops">
+            <option>1</option><option>2</option><option selected>3</option>
+            <option>4</option><option>5</option>
+          </select>
+        </div>
+        <button id="traceBtn" class="btn primary full">Trace</button>
+        <button id="showAllBtn" class="btn ghost full" style="margin-top:6px">Show full graph</button>
+      </div>
+
+      <div class="sect">
+        <h3>Risk</h3>
+        <button id="riskBtn" class="btn danger full">Run risk scan</button>
+        <div id="riskMsg" class="hint"></div>
+      </div>
+
+      <div class="sect" style="border:0">
+        <h3>Risk flags</h3>
+        <div id="flagsList" class="findings"></div>
+      </div>
+    </aside>
+
+    <div class="stage">
+      <svg id="graph"></svg>
+      <div class="toolbar">
+        <button id="fitBtn" class="btn ghost" title="Fit to view">⤢ fit</button>
+        <button id="freezeBtn" class="btn ghost" title="Pause layout">⏸ freeze</button>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div id="toast" class="toast"></div>
+    </div>
+
+    <aside class="inspector" id="inspector">
+      <div class="empty">Click a node to inspect a wallet.<br>Load a sample to begin.</div>
+    </aside>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "chain": "eth",
+  "asset": "ETH",
+  "note": "Synthetic fund-tracing scenario: a DeFi treasury is drained, funds are split across two hops, most are laundered through a sanctioned mixer, and a slice is cashed out at an exchange deposit address. All addresses except the Tornado Cash pool are fictitious and exist only to demonstrate flow tracing.",
+  "entities": [
+    {"address": "0x1111111111111111111111111111111111111111", "label": "Aurora Vault: Treasury", "entity": "Aurora Vault", "category": "defi", "risk": "none"},
+    {"address": "0x2222222222222222222222222222222222222222", "label": "Drainer EOA", "entity": "Unknown Actor", "category": "scam", "risk": "high"},
+    {"address": "0x3333333333333333333333333333333333333333", "label": "Intermediary A", "entity": "Unknown Actor", "category": "individual", "risk": "none"},
+    {"address": "0x4444444444444444444444444444444444444444", "label": "Intermediary B", "entity": "Unknown Actor", "category": "individual", "risk": "none"},
+    {"address": "0x5555555555555555555555555555555555555555", "label": "NovaEx: Deposit 0x55", "entity": "NovaEx", "category": "exchange", "risk": "low"}
+  ],
+  "addresses": [
+    {"address": "0x1111111111111111111111111111111111111111", "balance": 12.4, "seed": true, "tags": ["victim"]},
+    {"address": "0x2222222222222222222222222222222222222222", "balance": 20.0, "tags": ["theft-origin"]},
+    {"address": "0x3333333333333333333333333333333333333333", "balance": 10.0},
+    {"address": "0x4444444444444444444444444444444444444444", "balance": 50.0},
+    {"address": "0xa160cdab225685da1d56aa342ad8841c3b53f291", "balance": 101234.5},
+    {"address": "0x5555555555555555555555555555555555555555", "balance": 40.0}
+  ],
+  "transfers": [
+    {"txid": "0xaa01", "src": "0x1111111111111111111111111111111111111111", "dst": "0x2222222222222222222222222222222222222222", "value": 420.0, "asset": "ETH", "ts": "2026-02-01T02:14:00Z", "block": 1900001},
+    {"txid": "0xaa02", "src": "0x2222222222222222222222222222222222222222", "dst": "0x3333333333333333333333333333333333333333", "value": 200.0, "asset": "ETH", "ts": "2026-02-01T03:02:00Z", "block": 1900140},
+    {"txid": "0xaa03", "src": "0x2222222222222222222222222222222222222222", "dst": "0x4444444444444444444444444444444444444444", "value": 200.0, "asset": "ETH", "ts": "2026-02-01T03:05:00Z", "block": 1900142},
+    {"txid": "0xaa04", "src": "0x3333333333333333333333333333333333333333", "dst": "0xa160cdab225685da1d56aa342ad8841c3b53f291", "value": 150.0, "asset": "ETH", "ts": "2026-02-01T05:40:00Z", "block": 1900900},
+    {"txid": "0xaa05", "src": "0x4444444444444444444444444444444444444444", "dst": "0xa160cdab225685da1d56aa342ad8841c3b53f291", "value": 150.0, "asset": "ETH", "ts": "2026-02-01T06:11:00Z", "block": 1901020},
+    {"txid": "0xaa06", "src": "0x3333333333333333333333333333333333333333", "dst": "0x5555555555555555555555555555555555555555", "value": 40.0, "asset": "ETH", "ts": "2026-02-02T09:30:00Z", "block": 1905500}
+  ]
+}
