@@ -192,7 +192,8 @@ function draw() {
     const x2 = b.x + (edx / elen) * (b.r + 6), y2 = b.y + (edy / elen) * (b.r + 6);
     const col = e.flagged ? "#f87171" : "#38507a";
     let cls = "edge" + (e.flagged ? " flagged" : "");
-    if (foc) cls += (e.src === foc.f || e.dst === foc.f) ? " hot" : " dim";
+    if (e.on_path) cls += " path";
+    else if (foc) cls += (e.src === foc.f || e.dst === foc.f) ? " hot" : " dim";
     const path = el("path", { d: `M${x1},${y1} Q${qx},${qy} ${x2},${y2}`,
       class: cls, "stroke-width": e.w, "marker-end": `url(#arw${col.slice(1)})` });
     eg.appendChild(path);
@@ -207,13 +208,17 @@ function draw() {
   // nodes
   const ng = el("g", {}); vp.appendChild(ng);
   for (const n of nodes) {
-    let cls = "node" + (n.seed ? " seed" : "") + (selected === n.address ? " sel" : "");
+    let cls = "node" + (n.seed ? " seed" : "") + (selected === n.address ? " sel" : "") + (n.on_path ? " path" : "");
     if (foc && !foc.keep.has(n.address)) cls += " dim";
     const g = el("g", { class: cls, transform: `translate(${n.x},${n.y})` });
     g.appendChild(el("circle", { class: "halo", r: n.r + 9, fill: n.color }));
+    const isSrc = FLAGGED.has(n.category) || n.risk === "sanctioned" || n.risk === "high";
     if (FLAGGED.has(n.category) || ["high", "sanctioned", "medium"].includes(n.risk)) {
       g.appendChild(el("circle", { r: n.r + 3.5, class: "risk-ring",
         stroke: n.risk === "medium" ? "#fbbf24" : "#ef4444" }));
+    }
+    if ((n.taint || 0) >= 0.15 && !isSrc) {
+      g.appendChild(el("circle", { r: n.r + 6.5, class: "taint-ring", opacity: 0.4 + 0.6 * n.taint }));
     }
     g.appendChild(el("circle", { class: "body", r: n.r, fill: n.color }));
     const label = n.label || short(n.address);
@@ -258,10 +263,11 @@ function attachNode(g, n) {
 }
 function showTip(n, ev) {
   const risk = n.risk && n.risk !== "none" ? ` · risk ${n.risk}` : "";
+  const taint = (n.taint || 0) >= 0.15 ? `<br><span style="color:#fb923c">taint ${Math.round(n.taint * 100)}% · ${n.taint_hops}h from ${esc(n.taint_src || "?")}</span>` : "";
   tip.innerHTML = `<div class="tt-label">${esc(n.label || "Unlabeled wallet")}</div>
     <div class="tt-addr">${short(n.address)}</div>
     <div class="tt-meta">${esc(n.category || "unknown")}${risk}<br>
-      bal ${fmt(n.balance)} · in ${fmt(n.in_value)} · out ${fmt(n.out_value)}</div>`;
+      bal ${fmt(n.balance)} · in ${fmt(n.in_value)} · out ${fmt(n.out_value)}${taint}</div>`;
   tip.classList.add("show"); moveTip(ev);
 }
 function moveTip(ev) {
@@ -335,6 +341,7 @@ function renderInspector(a) {
   const badges = [];
   if (a.category) badges.push(`<span class="badge">${esc(a.category)}</span>`);
   if (a.risk && a.risk !== "none") badges.push(`<span class="badge risk-${a.risk}">risk: ${a.risk}</span>`);
+  if ((a.taint || 0) >= 0.15) badges.push(`<span class="badge taint">taint ${Math.round(a.taint * 100)}% · ${a.taint_hops}h</span>`);
   if (a.entity) badges.push(`<span class="badge">${esc(a.entity)}</span>`);
   (a.tags || []).forEach(t => badges.push(`<span class="badge">#${esc(t)}</span>`));
   const cps = (a.counterparties || []).map(c => {
@@ -372,11 +379,51 @@ function renderInspector(a) {
     <h4>Counterparties</h4>
     <table class="cp-tbl"><thead><tr><th>address</th><th class="num">in</th><th class="num">out</th></tr></thead>
       <tbody>${cps || '<tr><td colspan="3" class="hint">none</td></tr>'}</tbody></table>
-    <button id="traceFromBtn" class="btn primary full" style="margin-top:14px">Trace from this wallet →</button>`;
+    <button id="traceFromBtn" class="btn primary full" style="margin-top:14px">Trace from this wallet →</button>
+    <div class="insp-actions">
+      <button id="setABtn" class="btn ghost grow" title="Use as path start">Path A ↦</button>
+      <button id="setBBtn" class="btn ghost grow" title="Use as path end">↦ Path B</button>
+    </div>
+    <details class="annotate">
+      <summary>✎ Annotate wallet</summary>
+      <label>Label</label><input id="anLabel" value="${esc(a.label || "")}" />
+      <label>Entity</label><input id="anEntity" value="${esc(a.entity || "")}" />
+      <label>Category</label>
+      <select id="anCategory">${["", "exchange", "defi", "bridge", "contract", "individual", "mixer", "scam", "sanctioned", "unknown"]
+        .map(c => `<option${c === (a.category || "") ? " selected" : ""}>${c}</option>`).join("")}</select>
+      <label>Risk</label>
+      <select id="anRisk">${["none", "low", "medium", "high", "sanctioned"]
+        .map(r => `<option${r === (a.risk || "none") ? " selected" : ""}>${r}</option>`).join("")}</select>
+      <label>Tags (comma-separated)</label><input id="anTags" value="${esc((a.tags || []).join(", "))}" />
+      <label>Note</label><textarea id="anNote">${esc(a.note || "")}</textarea>
+      <button id="anSave" class="btn primary full mt">Save annotation</button>
+    </details>`;
   box.querySelectorAll(".cp-addr").forEach(x => x.onclick = () => { selectNode(x.dataset.a); const n = nodeById[x.dataset.a]; if (n) centerOn(n); });
   const cp = box.querySelector(".copy");
   cp.onclick = () => { navigator.clipboard?.writeText(cp.dataset.copy); toast("address copied"); };
   document.getElementById("traceFromBtn").onclick = () => { document.getElementById("seedAddr").value = a.address; doTrace(); };
+  document.getElementById("setABtn").onclick = () => { document.getElementById("pathFrom").value = a.address; toast("path start set"); };
+  document.getElementById("setBBtn").onclick = () => { document.getElementById("pathTo").value = a.address; toast("path end set"); };
+  document.getElementById("anSave").onclick = () => saveAnnotation(a.address);
+}
+
+async function saveAnnotation(address) {
+  const tags = document.getElementById("anTags").value.split(",").map(s => s.trim()).filter(Boolean);
+  const body = {
+    address, chain,
+    label: document.getElementById("anLabel").value.trim(),
+    entity: document.getElementById("anEntity").value.trim(),
+    category: document.getElementById("anCategory").value || null,
+    risk: document.getElementById("anRisk").value,
+    note: document.getElementById("anNote").value,
+    tags,
+  };
+  try {
+    await api(`/api/cases/${currentCase}/address/annotate`, "POST", body);
+    await refreshAll();
+    await selectNode(address);
+    toast("annotation saved");
+  } catch (e) { toast("save failed: " + e.message); }
 }
 
 async function loadFlags() {
@@ -414,6 +461,27 @@ async function loadSample() {
     chain = r.chain; document.getElementById("chainSelect").value = chain;
     await refreshAll(); setTimeout(fit, 450); toast(`loaded ${r.transfers} transfers`);
   } catch (e) { toast("load failed: " + e.message); }
+}
+async function doTaint() {
+  try {
+    const r = await api(`/api/cases/${currentCase}/taint`, "POST", { chain });
+    await refreshAll();
+    toast(`taint: ${r.tainted} wallets exposed from ${r.sources} source(s), ${r.new_flags} flags`);
+  } catch (e) { toast("taint scan failed: " + e.message); }
+}
+async function doFindPath() {
+  const from = document.getElementById("pathFrom").value.trim();
+  const to = document.getElementById("pathTo").value.trim();
+  const msg = document.getElementById("pathMsg");
+  if (!from || !to) { msg.textContent = "enter both addresses"; return; }
+  const directed = document.getElementById("pathDirected").checked ? 1 : 0;
+  try {
+    const r = await api(`/api/cases/${currentCase}/path?chain=${chain}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&directed=${directed}`);
+    if (!r.found) { msg.textContent = "no connecting path found"; toast("no path"); return; }
+    selected = from; ingestGraph(r); setTimeout(fit, 450);
+    msg.innerHTML = `<span style="color:var(--accent-2)">${r.hops} hop(s)</span> · min flow ${fmt(r.min_value)}`;
+    toast(`path found: ${r.hops} hops`);
+  } catch (e) { msg.textContent = e.message; }
 }
 function doSearch() {
   const q = document.getElementById("search").value.trim().toLowerCase();
@@ -466,6 +534,8 @@ function wire() {
       toast(r.new + r.merged > 0 ? `${r.new} new, ${r.merged} merged flags` : "no risk flags found");
     } catch (e) { toast("risk scan failed: " + e.message); }
   };
+  document.getElementById("taintBtn").onclick = doTaint;
+  document.getElementById("findPathBtn").onclick = doFindPath;
   document.getElementById("search").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
   document.getElementById("zoomInBtn").onclick = () => zoomAround(W / 2, H / 2, 1.2);
   document.getElementById("zoomOutBtn").onclick = () => zoomAround(W / 2, H / 2, 0.83);

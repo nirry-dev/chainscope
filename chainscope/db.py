@@ -40,6 +40,9 @@ CREATE TABLE IF NOT EXISTS chain_addresses (
     tags       TEXT,                          -- JSON list
     note       TEXT,
     seed       INTEGER NOT NULL DEFAULT 0,    -- 1 = an address the analyst pivoted from
+    taint      REAL NOT NULL DEFAULT 0,       -- 0..1 propagated exposure to a flagged source
+    taint_src  TEXT,                          -- label of the nearest flagged source
+    taint_hops INTEGER,                        -- hops from that source
     created_at TEXT NOT NULL,
     UNIQUE(case_id, chain, address)
 );
@@ -84,12 +87,25 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _migrate(conn):
+    """Add columns introduced after a DB was first created (SQLite has no
+    ADD COLUMN IF NOT EXISTS)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(chain_addresses)")}
+    for name, ddl in (("taint", "taint REAL NOT NULL DEFAULT 0"),
+                      ("taint_src", "taint_src TEXT"),
+                      ("taint_hops", "taint_hops INTEGER")):
+        if name not in cols:
+            conn.execute(f"ALTER TABLE chain_addresses ADD COLUMN {ddl}")
+    conn.commit()
+
+
 def connect(path):
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
     conn.commit()
+    _migrate(conn)
     return conn
 
 

@@ -180,10 +180,33 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, analyze.inspect(conn, cid, chain, addr)
                                   or {"error": "address not found"})
 
+            if sub == ["address", "annotate"]:
+                body = self._body()
+                addr = body.get("address")
+                if not addr:
+                    return self._json(400, {"error": "address required"})
+                store.annotate_address(conn, cid, body.get("chain", "eth"), addr, {
+                    k: body[k] for k in ("label", "entity", "category", "risk", "note", "tags")
+                    if k in body})
+                return self._json(200, {"ok": True})
+
             if sub == ["risk"]:
                 ch = self._body().get("chain") or "eth"
                 new, merged = analyze.risk_scan(conn, cid, ch)
                 return self._json(200, {"new": new, "merged": merged})
+
+            if sub == ["taint"]:
+                body = self._body()
+                return self._json(200, analyze.taint_scan(
+                    conn, cid, body.get("chain", "eth"), max_hops=int(body.get("max_hops", 4))))
+
+            if sub == ["path"]:
+                src, dst = q.get("from", [None])[0], q.get("to", [None])[0]
+                if not src or not dst:
+                    return self._json(400, {"error": "from and to query params required"})
+                return self._json(200, analyze.find_paths(
+                    conn, cid, chain, src, dst,
+                    directed=q.get("directed", ["1"])[0] not in ("0", "false")))
 
             if sub == ["flags"]:
                 return self._json(200, {"flags": store.list_flags(conn, cid)})

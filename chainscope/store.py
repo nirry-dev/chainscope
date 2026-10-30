@@ -73,6 +73,44 @@ def set_risk(conn, case_id, chain, address, risk):
     conn.commit()
 
 
+def reset_taint(conn, case_id, chain):
+    conn.execute(
+        "UPDATE chain_addresses SET taint=0, taint_src=NULL, taint_hops=NULL "
+        "WHERE case_id=? AND chain=?", (case_id, chain))
+    conn.commit()
+
+
+def set_taint(conn, case_id, chain, address, taint, src=None, hops=None):
+    conn.execute(
+        "UPDATE chain_addresses SET taint=?, taint_src=?, taint_hops=? "
+        "WHERE case_id=? AND chain=? AND address=?",
+        (taint, src, hops, case_id, chain, address))
+    conn.commit()
+
+
+# fields an analyst may override by hand from the inspector
+_ANNOTATABLE = {"label", "entity", "category", "risk", "note"}
+
+
+def annotate_address(conn, case_id, chain, address, fields):
+    """Force-set analyst-provided fields on an address (manual relabel/retag).
+    Unlike upsert_address this overwrites with exactly what was given, incl.
+    lowering risk (e.g. marking a false positive). `tags` is a list."""
+    sets, vals = [], []
+    for k in _ANNOTATABLE:
+        if k in fields and fields[k] is not None:
+            sets.append(f"{k}=?"); vals.append(fields[k])
+    if "tags" in fields and fields["tags"] is not None:
+        sets.append("tags=?"); vals.append(json.dumps(fields["tags"]))
+    if not sets:
+        return
+    vals += [case_id, chain, address]
+    conn.execute(
+        f"UPDATE chain_addresses SET {', '.join(sets)} "
+        "WHERE case_id=? AND chain=? AND address=?", vals)
+    conn.commit()
+
+
 def refresh_tx_counts(conn, case_id, chain):
     """Recompute tx_count / first_seen / last_seen for every address from the
     transfers actually stored. Cheap, idempotent, called after an import."""

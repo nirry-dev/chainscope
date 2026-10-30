@@ -110,6 +110,8 @@ button:active { transform: translateY(1px); }
 .card-head h3 { margin: 0; }
 .row { display: flex; gap: 7px; align-items: center; }
 .hint { color: var(--faint); font-size: 11.5px; margin: 8px 0 0; }
+.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.chk input { width: auto; padding: 0; margin: 0; accent-color: var(--accent); }
 
 /* ---------- stage ---------- */
 .stage { flex: 1; position: relative; overflow: hidden;
@@ -137,6 +139,9 @@ button:active { transform: translateY(1px); }
 .node .halo { fill: none; opacity: .0; transition: opacity .15s; }
 .node.sel .halo, .node:hover .halo { opacity: .5; }
 .node .risk-ring { fill: none; stroke-width: 2.3; }
+.node .taint-ring { fill: none; stroke: #fb923c; stroke-width: 2; stroke-dasharray: 3 3; }
+.edge.path { stroke: var(--accent-2); opacity: 1; stroke-dasharray: 6 5; animation: flow .9s linear infinite; }
+.node.path circle.body { stroke: var(--accent-2); stroke-width: 2.5; }
 .node text { fill: var(--txt); font-size: 11px; font-weight: 500; pointer-events: none;
   paint-order: stroke; stroke: #0a0e16; stroke-width: 3.5px; transition: opacity .12s; }
 .node.dim { opacity: .2; }
@@ -244,6 +249,19 @@ button:active { transform: translateY(1px); }
 .cp-addr .cp-name { color: var(--accent); }
 .cp-addr:hover .cp-name { text-decoration: underline; }
 .recv { color: var(--ok); } .sent { color: var(--warn); }
+.badge.taint { color: #fed7aa; border-color: #5a3a1d; background: #1c1510; }
+
+/* path quick-set + annotate */
+.insp-actions { display: flex; gap: 7px; margin-top: 14px; }
+.annotate { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.annotate > summary { cursor: pointer; color: var(--muted); font-size: 12px; list-style: none; user-select: none; }
+.annotate > summary::-webkit-details-marker { display: none; }
+.annotate > summary:hover { color: var(--txt); }
+.annotate[open] > summary { color: var(--txt); margin-bottom: 10px; }
+.annotate label { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--faint); margin: 8px 0 3px; }
+.annotate input, .annotate select, .annotate textarea { width: 100%; }
+.annotate textarea { resize: vertical; min-height: 44px; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 1100px) {
