@@ -1,0 +1,33 @@
+{
+  "chain": "btc",
+  "asset": "BTC",
+  "note": "Synthetic Bitcoin scenario: a theft payout lands across three deposit wallets the actor controls, which are then co-spent together into one consolidation address (common-input ownership). Funds peel through a hop, split into a sanctioned mixer and a two-wallet exchange, and cash out. Demonstrates address clustering (co-spend + shared-entity) and risk flagging. All addresses are synthetic.",
+  "entities": [
+    {"address": "bc1qmixer000000000000000000000000000mixaa", "label": "CipherMix", "entity": "CipherMix", "category": "mixer", "risk": "sanctioned"},
+    {"address": "bc1qnimbus0000000000000000000000000hot001", "label": "Nimbus: Hot 1", "entity": "Nimbus Exchange", "category": "exchange", "risk": "low"},
+    {"address": "bc1qnimbus0000000000000000000000000hot002", "label": "Nimbus: Hot 2", "entity": "Nimbus Exchange", "category": "exchange", "risk": "low"}
+  ],
+  "addresses": [
+    {"address": "bc1qactor00000000000000000000000000dep001", "balance": 0, "seed": true, "tags": ["payout"]},
+    {"address": "bc1qactor00000000000000000000000000dep002", "balance": 0, "tags": ["payout"]},
+    {"address": "bc1qactor00000000000000000000000000dep003", "balance": 0, "tags": ["payout"]},
+    {"address": "bc1qconsol0000000000000000000000000cons01", "balance": 0.5},
+    {"address": "bc1qhop000000000000000000000000000000hop01", "balance": 0.2},
+    {"address": "bc1qmixer000000000000000000000000000mixaa", "balance": 12.4},
+    {"address": "bc1qnimbus0000000000000000000000000hot001", "balance": 40.0},
+    {"address": "bc1qnimbus0000000000000000000000000hot002", "balance": 31.0}
+  ],
+  "cospends": [
+    ["bc1qactor00000000000000000000000000dep001", "bc1qactor00000000000000000000000000dep002", "bc1qactor00000000000000000000000000dep003"]
+  ],
+  "transfers": [
+    {"txid": "btc-a1", "src": "bc1qsource0000000000000000000000000theft0", "dst": "bc1qactor00000000000000000000000000dep001", "value": 4.0, "asset": "BTC", "ts": "2026-02-10T08:00:00Z", "block": 830001},
+    {"txid": "btc-a2", "src": "bc1qsource0000000000000000000000000theft0", "dst": "bc1qactor00000000000000000000000000dep002", "value": 3.5, "asset": "BTC", "ts": "2026-02-10T08:05:00Z", "block": 830002},
+    {"txid": "btc-a3", "src": "bc1qsource0000000000000000000000000theft0", "dst": "bc1qactor00000000000000000000000000dep003", "value": 2.5, "asset": "BTC", "ts": "2026-02-10T08:09:00Z", "block": 830003},
+    {"txid": "btc-cons", "src": "bc1qactor00000000000000000000000000dep001", "dst": "bc1qconsol0000000000000000000000000cons01", "value": 9.9, "asset": "BTC", "ts": "2026-02-11T12:00:00Z", "block": 830400},
+    {"txid": "btc-peel1", "src": "bc1qconsol0000000000000000000000000cons01", "dst": "bc1qhop000000000000000000000000000000hop01", "value": 9.7, "asset": "BTC", "ts": "2026-02-12T09:30:00Z", "block": 830900},
+    {"txid": "btc-mix", "src": "bc1qhop000000000000000000000000000000hop01", "dst": "bc1qmixer000000000000000000000000000mixaa", "value": 5.0, "asset": "BTC", "ts": "2026-02-12T14:00:00Z", "block": 831020},
+    {"txid": "btc-ex1", "src": "bc1qhop000000000000000000000000000000hop01", "dst": "bc1qnimbus0000000000000000000000000hot001", "value": 3.2, "asset": "BTC", "ts": "2026-02-13T10:00:00Z", "block": 831500},
+    {"txid": "btc-ex2", "src": "bc1qhop000000000000000000000000000000hop01", "dst": "bc1qnimbus0000000000000000000000000hot002", "value": 1.4, "asset": "BTC", "ts": "2026-02-13T10:30:00Z", "block": 831520}
+  ]
+}

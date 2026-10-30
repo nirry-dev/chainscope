@@ -101,13 +101,32 @@ def main():
     print(f"   graph before 01:41: {len(early['nodes'])} nodes / {len(early['edges'])} edges")
     print(f"   graph full:         {len(full['nodes'])} nodes / {len(full['edges'])} edges")
 
-    hr("10. Evidence report (export)")
+    hr("10. Per-asset counterparty nets (the exploiter EOA)")
+    info = analyze.inspect(conn, cid2, "eth", ex)
+    for c in info["counterparties"][:4]:
+        nets = " ".join(f"{a['asset']} {a['net']:+g}" for a in c["assets"])
+        print(f"   {(c['label'] or c['address'])[:22]:>22}: {nets}")
+
+    hr("11. Address clustering (co-spend + shared entity)")
+    cid3 = db.create_case(conn, "BTC peel + cluster demo")
+    analyze.ingest(conn, cid3, sources.load_sample("btc_peel_cluster"))
+    cl = analyze.cluster(conn, cid3, "btc")
+    print(f"   {cl['count']} cluster(s), {cl['clustered']}/{cl['total']} addresses grouped")
+    for c in cl["clusters"]:
+        print(f"   [{c['id']}] {c['name']}  ({c['size']} addrs, risk={c['risk']})")
+    # ETH launder case clusters by shared entity ("Unknown Actor")
+    cle = analyze.cluster(conn, cid2, "eth")
+    print(f"   eth case: {cle['count']} cluster(s) via shared entity")
+
+    hr("12. Evidence report (export, with flow diagram + clusters)")
     analyze.taint_scan(conn, cid2, "eth")
     j = report.build_json(conn, cid2, "eth")
     md = report.build_markdown(conn, cid2, "eth")
     print(f"   json summary: {j['summary']['wallets']} wallets, {j['summary']['transactions']} txns, "
-          f"{j['summary']['flags']} flags, {j['summary']['tainted_wallets']} tainted")
-    print(f"   markdown: {len(md)} chars / {md.count(chr(10)) + 1} lines; title -> {md.splitlines()[0]}")
+          f"{j['summary']['flags']} flags, {j['summary']['tainted_wallets']} tainted, "
+          f"{j['summary']['clusters']} clusters")
+    print(f"   markdown: {len(md)} chars / {md.count(chr(10)) + 1} lines; "
+          f"mermaid diagram embedded: {'```mermaid' in md}")
 
     print("\nOK - chainscope works end to end, offline.")
 

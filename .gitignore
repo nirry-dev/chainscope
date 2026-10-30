@@ -20,8 +20,9 @@ src-tauri/Cargo.lock
 src-tauri/icons/android/
 src-tauri/icons/ios/
 
-# editors / os
+# editors / os / local tooling
 .vscode/
 .idea/
+.claude/
 .DS_Store
 Thumbs.db

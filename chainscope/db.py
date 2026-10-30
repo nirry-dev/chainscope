@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS chain_addresses (
     taint      REAL NOT NULL DEFAULT 0,       -- 0..1 propagated exposure to a flagged source
     taint_src  TEXT,                          -- label of the nearest flagged source
     taint_hops INTEGER,                        -- hops from that source
+    cluster    TEXT,                           -- co-ownership cluster id (common-input / entity)
     created_at TEXT NOT NULL,
     UNIQUE(case_id, chain, address)
 );
@@ -90,6 +91,15 @@ CREATE TABLE IF NOT EXISTS flags (
     created_at  TEXT NOT NULL,
     UNIQUE(case_id, dedup_key)
 );
+
+CREATE TABLE IF NOT EXISTS chain_cospends (
+    id       INTEGER PRIMARY KEY,
+    case_id  INTEGER NOT NULL,
+    chain    TEXT NOT NULL,
+    a        TEXT NOT NULL,                 -- co-spend pair (common-input ownership heuristic)
+    b        TEXT NOT NULL,
+    UNIQUE(case_id, chain, a, b)
+);
 """
 
 
@@ -103,7 +113,8 @@ def _migrate(conn):
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(chain_addresses)")}
     for name, ddl in (("taint", "taint REAL NOT NULL DEFAULT 0"),
                       ("taint_src", "taint_src TEXT"),
-                      ("taint_hops", "taint_hops INTEGER")):
+                      ("taint_hops", "taint_hops INTEGER"),
+                      ("cluster", "cluster TEXT")):
         if name not in cols:
             conn.execute(f"ALTER TABLE chain_addresses ADD COLUMN {ddl}")
     conn.commit()
@@ -154,7 +165,8 @@ def update_case(conn, case_id, name=None, note=None):
 
 def delete_case(conn, case_id):
     """Delete a case and everything scoped to it."""
-    for t in ("chain_holdings", "chain_transfers", "chain_addresses", "flags"):
+    for t in ("chain_holdings", "chain_transfers", "chain_addresses", "flags",
+              "chain_cospends"):
         conn.execute(f"DELETE FROM {t} WHERE case_id=?", (case_id,))
     conn.execute("DELETE FROM cases WHERE id=?", (case_id,))
     conn.commit()

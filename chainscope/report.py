@@ -32,6 +32,7 @@ def build_json(conn, case_id, chain="eth"):
         sev_counts[f["severity"]] = sev_counts.get(f["severity"], 0) + 1
     tainted = [a for a in addresses if (a.get("taint") or 0) >= 0.15]
     max_taint = max((a.get("taint") or 0 for a in addresses), default=0)
+    clusters = _clusters_from(addresses)
 
     return {
         "generated_at": db.now(), "chain": chain, "case": case,
@@ -40,11 +41,35 @@ def build_json(conn, case_id, chain="eth"):
             "assets": assets, "flags": len(flags), "flags_by_severity": sev_counts,
             "flagged_entities": sum(1 for a in addresses if _is_flagged(a)),
             "tainted_wallets": len(tainted), "max_taint": round(max_taint, 3),
+            "clusters": len(clusters),
             "window": {"start": tl["min"], "end": tl["max"]},
         },
         "assets": assets, "addresses": addresses, "edges": edges,
-        "transactions": transfers, "flags": flags,
+        "transactions": transfers, "flags": flags, "clusters": clusters,
     }
+
+
+def _clusters_from(addresses):
+    """Summarize the co-ownership clusters already recorded on the addresses
+    (set by the last clustering run). Read-only — the report reflects current
+    state and never recomputes."""
+    groups = {}
+    for a in addresses:
+        cid = a.get("cluster")
+        if cid:
+            groups.setdefault(cid, []).append(a)
+    out = []
+    for cid, members in groups.items():
+        if len(members) < 2:
+            continue
+        ent = next((m.get("entity") for m in members if m.get("entity")), None)
+        lab = next((m.get("label") for m in members if m.get("label")), None)
+        risk = max((m.get("risk", "none") for m in members), key=labels.risk_rank)
+        out.append({"id": cid, "name": ent or lab or (members[0]["address"][:10] + "…"),
+                    "size": len(members), "risk": risk,
+                    "addresses": [m["address"] for m in members]})
+    out.sort(key=lambda c: c["size"], reverse=True)
+    return out
 
 
 def _tbl(headers, rows):
@@ -67,6 +92,35 @@ def _g(v):
     if n >= 1e3:
         return f"{n/1e3:.1f}k"
     return f"{n:g}"
+
+
+def _mnode(label):
+    """Mermaid-safe node label: strip quotes/newlines, cap length."""
+    s = str(label).replace('"', "'").replace("\n", " ").strip()
+    return s[:26] + "…" if len(s) > 27 else s
+
+
+def _flow_diagram(edges, lab, addresses, top=16):
+    """A Mermaid flowchart of the largest flows — renders inline on GitHub /
+    VS Code / any Mermaid-aware viewer, with flagged destinations highlighted.
+    ASCII-only so it also prints safely to a Windows console."""
+    es = sorted(edges, key=lambda e: e["total"] or 0, reverse=True)[:top]
+    if not es:
+        return ""
+    risky = {a["address"] for a in addresses if _is_flagged(a)}
+    nid, lines = {}, ["```mermaid", "flowchart LR"]
+    for addr in {e["src"] for e in es} | {e["dst"] for e in es}:
+        nid[addr] = f"n{len(nid)}"
+        lines.append(f'  {nid[addr]}["{_mnode(lab.get(addr, addr))}"]')
+    for e in es:
+        val = f'{_g(e["total"])} {e["asset"] or ""}'.strip()
+        lines.append(f'  {nid[e["src"]]} -- "{val}" --> {nid[e["dst"]]}')
+    flagged = [nid[a] for a in risky if a in nid]
+    if flagged:
+        lines.append("  classDef flagged stroke:#ef4444,stroke-width:2px,fill:#3a1414,color:#fff;")
+        lines.append("  class " + ",".join(flagged) + " flagged;")
+    lines.append("```")
+    return "\n".join(lines)
 
 
 def build_markdown(conn, case_id, chain="eth"):
@@ -100,6 +154,8 @@ def build_markdown(conn, case_id, chain="eth"):
     L.append(f"- **Risk flags:** {s['flags']} ({sev_str})")
     L.append(f"- **Flagged entities:** {s['flagged_entities']}")
     L.append(f"- **Tainted wallets:** {s['tainted_wallets']} (max {int(s['max_taint']*100)}% exposure)")
+    if s.get("clusters"):
+        L.append(f"- **Co-ownership clusters:** {s['clusters']}")
     L.append("")
 
     # flags
@@ -124,15 +180,35 @@ def build_markdown(conn, case_id, chain="eth"):
         L.append(_tbl(["Address", "Label", "Entity", "Category", "Risk", "Taint"], rows))
         L.append("")
 
-    # fund flows
+    # fund flows — grouped by asset, each largest-first
     if d["edges"]:
-        L.append("## Fund flows (aggregated)")
-        L.append("")
         lab = {a["address"]: (a.get("label") or a["address"][:10] + "…") for a in d["addresses"]}
-        rows = sorted(([lab.get(e["src"], e["src"]), lab.get(e["dst"], e["dst"]),
-                        e["asset"], _g(e["total"]), e["n"]] for e in d["edges"]),
-                      key=lambda r: r[2])
-        L.append(_tbl(["From", "To", "Asset", "Value", "Txns"], rows))
+        L.append("## Fund flows")
+        L.append("")
+        L.append(_flow_diagram(d["edges"], lab, d["addresses"]))
+        L.append("")
+        by_asset = {}
+        for e in d["edges"]:
+            by_asset.setdefault(e["asset"] or "—", []).append(e)
+        for sym in sorted(by_asset):
+            es = sorted(by_asset[sym], key=lambda e: e["total"] or 0, reverse=True)
+            total = sum(e["total"] or 0 for e in es)
+            L.append(f"### {sym} — {_g(total)} across {len(es)} flow(s)")
+            L.append("")
+            rows = [[lab.get(e["src"], e["src"]), lab.get(e["dst"], e["dst"]),
+                     _g(e["total"]), e["n"]] for e in es]
+            L.append(_tbl(["From", "To", "Value", "Txns"], rows))
+            L.append("")
+
+    # co-ownership clusters
+    if d.get("clusters"):
+        L.append("## Co-ownership clusters")
+        L.append("")
+        L.append("> Addresses grouped by common-input ownership and shared entity "
+                 "attribution — presumed to be controlled by one operator.")
+        L.append("")
+        rows = [[c["id"], c["name"], c["size"], c["risk"]] for c in d["clusters"]]
+        L.append(_tbl(["Cluster", "Attribution", "Addresses", "Risk"], rows))
         L.append("")
 
     # appendix: transactions

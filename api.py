@@ -196,7 +196,8 @@ class Handler(BaseHTTPRequestHandler):
                 addr = q.get("address", [None])[0]
                 if not addr:
                     return self._json(400, {"error": "address query param required"})
-                return self._json(200, analyze.inspect(conn, cid, chain, addr)
+                return self._json(200, analyze.inspect(
+                    conn, cid, chain, addr, asset=q.get("asset", [None])[0] or None)
                                   or {"error": "address not found"})
 
             if sub == ["address", "annotate"]:
@@ -218,6 +219,10 @@ class Handler(BaseHTTPRequestHandler):
                 body = self._body()
                 return self._json(200, analyze.taint_scan(
                     conn, cid, body.get("chain", "eth"), max_hops=int(body.get("max_hops", 4))))
+
+            if sub == ["cluster"]:
+                ch = self._body().get("chain") or "eth"
+                return self._json(200, analyze.cluster(conn, cid, ch))
 
             if sub == ["path"]:
                 src, dst = q.get("from", [None])[0], q.get("to", [None])[0]

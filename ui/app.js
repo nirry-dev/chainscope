@@ -17,6 +17,7 @@ const SEV_COLOR = { critical: "#ef4444", high: "#f87171", medium: "#fbbf24", low
 let currentCase = null, chain = "eth", asset = "";  // asset "" = all assets
 let nodes = [], edges = [], nodeById = {}, adj = {};
 let running = false, frozen = false, raf = null, heat = 1;
+let showHulls = false;  // draw co-ownership cluster hulls behind nodes
 let view = { x: 0, y: 0, k: 1 };
 let W = 800, H = 600, selected = null, hoverAddr = null;
 // timeline scrubber state (ms since epoch)
@@ -154,6 +155,7 @@ async function refreshAll() {
   const g = await api(`/api/cases/${currentCase}/graph?chain=${chain}&asset=${encodeURIComponent(asset)}`);
   populateAssets(g.assets || []);
   ingestGraph(g);
+  const cl = document.getElementById("clusterList"); if (cl) cl.innerHTML = "";
   await loadFlags();
   await loadTimeline();
 }
@@ -182,6 +184,7 @@ function ingestGraph(g) {
     (adj[e.dst] = adj[e.dst] || new Set()).add(e.src);
   }
   if (selected && !nodeById[selected]) { selected = null; renderInspectorEmpty(); }
+  showHulls = nodes.some(n => n.cluster);
   computeScales();
   renderLegend();
   reheat();
@@ -267,6 +270,9 @@ function draw() {
   const vp = el("g", { transform: `translate(${view.x},${view.y}) scale(${view.k})` });
   svg.appendChild(vp);
 
+  // cluster hulls (behind everything) — co-ownership grouping
+  if (showHulls) drawHulls(vp);
+
   // edges (curved quadratic beziers)
   const eg = el("g", {}); vp.appendChild(eg);
   for (const e of edges) {
@@ -325,6 +331,79 @@ function renderLegend() {
   cats.sort((a, b) => order.indexOf(a) - order.indexOf(b));
   document.getElementById("legend").innerHTML = cats.map(c =>
     `<div class="li"><span class="dot" style="background:${CAT_COLOR[c] || CAT_COLOR.unknown}"></span>${c}</div>`).join("");
+}
+
+// ---------- cluster hulls ----------
+function clusterHue(cid) {            // deterministic color per cluster id
+  let h = 0; for (let i = 0; i < cid.length; i++) h = (h * 31 + cid.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+function clusterCss(cid) { return `hsl(${clusterHue(cid)} 72% 62%)`; }
+function convexHull(pts) {
+  if (pts.length < 3) return pts.slice();
+  pts = pts.slice().sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lo = [], hi = [];
+  for (const p of pts) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (hi.length >= 2 && cross(hi[hi.length - 2], hi[hi.length - 1], p) <= 0) hi.pop(); hi.push(p); }
+  lo.pop(); hi.pop(); return lo.concat(hi);
+}
+function drawHulls(vp) {
+  const groups = {};
+  for (const n of nodes) if (n.cluster) (groups[n.cluster] = groups[n.cluster] || []).push(n);
+  const hg = el("g", { class: "hulls" }); vp.appendChild(hg);
+  for (const cid in groups) {
+    const members = groups[cid];
+    if (members.length < 2) continue;
+    const col = clusterCss(cid);
+    const cx = members.reduce((s, m) => s + m.x, 0) / members.length;
+    const cy = members.reduce((s, m) => s + m.y, 0) / members.length;
+    const pad = Math.max(...members.map(m => m.r)) + 22;
+    const hull = convexHull(members.map(m => ({ x: m.x, y: m.y })));
+    const padded = hull.map(p => { const dx = p.x - cx, dy = p.y - cy, d = Math.hypot(dx, dy) || 1; return { x: p.x + dx / d * pad, y: p.y + dy / d * pad }; });
+    if (padded.length >= 3) {
+      const d = "M" + padded.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L") + " Z";
+      hg.appendChild(el("path", { d, class: "hull", fill: col, stroke: col }));
+    } else if (padded.length === 2) {
+      hg.appendChild(el("line", { x1: padded[0].x, y1: padded[0].y, x2: padded[1].x, y2: padded[1].y,
+        class: "hull-line", stroke: col, "stroke-width": pad * 1.3 }));
+    }
+    let minY = Infinity, lx = cx; for (const p of padded) if (p.y < minY) { minY = p.y; lx = p.x; }
+    const t = el("text", { x: cx, y: minY - 5, class: "hull-label", fill: col, "text-anchor": "middle" });
+    t.textContent = cid; hg.appendChild(t);
+  }
+}
+async function doCluster() {
+  try {
+    const res = await api(`/api/cases/${currentCase}/cluster`, "POST", { chain });
+    await refreshAll();                 // re-fetch nodes carrying cluster ids
+    renderClusterList(res);
+    toast(res.count ? `${res.count} cluster(s), ${res.clustered}/${res.total} grouped` : "no multi-address clusters");
+  } catch (e) { toast("cluster failed: " + e.message); }
+}
+function renderClusterList(res) {
+  const box = document.getElementById("clusterList");
+  if (!box) return;
+  if (!res || !res.clusters || !res.clusters.length) { box.innerHTML = `<div class="hint">No multi-address clusters found.</div>`; return; }
+  box.innerHTML = res.clusters.map(c => `
+    <div class="cl-item" data-cid="${c.id}" data-addrs='${esc(JSON.stringify(c.addresses))}'>
+      <span class="cl-dot" style="background:${clusterCss(c.id)}"></span>
+      <span class="cl-name">${esc(c.name)}</span>
+      <span class="cl-size">${c.size}</span>
+      ${c.risk && c.risk !== "none" ? `<span class="badge risk-${c.risk}">${c.risk}</span>` : ""}
+    </div>`).join("");
+  box.querySelectorAll(".cl-item").forEach(it => it.onclick = () => focusCluster(JSON.parse(it.dataset.addrs)));
+}
+function focusCluster(addrs) {
+  const ns = addrs.map(a => nodeById[a]).filter(Boolean);
+  if (!ns.length) return;
+  let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+  for (const n of ns) { minx = Math.min(minx, n.x); miny = Math.min(miny, n.y); maxx = Math.max(maxx, n.x); maxy = Math.max(maxy, n.y); }
+  const pad = 130, gw = (maxx - minx) || 1, gh = (maxy - miny) || 1;
+  view.k = Math.min((W - pad) / gw, (H - pad) / gh, 2.4);
+  view.x = W / 2 - ((minx + maxx) / 2) * view.k;
+  view.y = H / 2 - ((miny + maxy) / 2) * view.k;
+  draw();
 }
 
 // ---------- interaction ----------
@@ -407,7 +486,7 @@ async function selectNode(address) {
   hoverAddr = null; hideTip();
   document.getElementById("seedAddr").value = address;
   draw();
-  const info = await api(`/api/cases/${currentCase}/address?chain=${chain}&address=${encodeURIComponent(address)}`);
+  const info = await api(`/api/cases/${currentCase}/address?chain=${chain}&address=${encodeURIComponent(address)}&asset=${encodeURIComponent(asset)}`);
   renderInspector(info);
 }
 function renderInspectorEmpty() {
@@ -436,12 +515,18 @@ function renderInspector(a) {
   (a.tags || []).forEach(t => badges.push(`<span class="badge">#${esc(t)}</span>`));
   const cps = (a.counterparties || []).map(c => {
     const col = (c.risk === "sanctioned" || FLAGGED.has(c.category)) ? CAT_COLOR.mixer : (CAT_COLOR[c.category] || CAT_COLOR.unknown);
+    const assets = c.assets || [];
+    // Multiple assets can't be summed into one in/out (2M USDC vs 30 ETH), so
+    // show a signed per-asset net chip row and blank the aggregate columns.
+    const multi = assets.length > 1;
+    const chips = multi ? `<div class="cp-assets">` + assets.map(x =>
+      `<span class="cp-as ${x.net >= 0 ? "pos" : "neg"}">${esc(x.asset)} ${x.net >= 0 ? "+" : "−"}${fmt(Math.abs(x.net))}</span>`).join("") + `</div>` : "";
     return `<tr>
       <td><span class="cp-addr" data-a="${c.address}"><span class="cp-dot" style="background:${col}"></span>
         <span class="cp-name">${c.label ? esc(c.label) : short(c.address)}</span></span>
-        ${c.risk && c.risk !== "none" ? `<span class="badge risk-${c.risk}">${c.risk}</span>` : ""}</td>
-      <td class="num recv">${c.recv ? "+" + fmt(c.recv) : ""}</td>
-      <td class="num sent">${c.sent ? "−" + fmt(c.sent) : ""}</td></tr>`;
+        ${c.risk && c.risk !== "none" ? `<span class="badge risk-${c.risk}">${c.risk}</span>` : ""}${chips}</td>
+      <td class="num recv">${!multi && c.recv ? "+" + fmt(c.recv) : ""}</td>
+      <td class="num sent">${!multi && c.sent ? "−" + fmt(c.sent) : ""}</td></tr>`;
   }).join("");
   // merge per-asset holdings + in/out flows into one table
   const am = {};
@@ -716,6 +801,7 @@ function wire() {
     } catch (e) { toast("risk scan failed: " + e.message); }
   };
   document.getElementById("taintBtn").onclick = doTaint;
+  document.getElementById("clusterBtn").onclick = doCluster;
   document.getElementById("findPathBtn").onclick = doFindPath;
   document.getElementById("search").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
   document.getElementById("zoomInBtn").onclick = () => zoomAround(W / 2, H / 2, 1.2);

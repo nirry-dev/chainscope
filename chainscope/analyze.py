@@ -59,6 +59,10 @@ def ingest(conn, case_id, data, source="sample"):
             block=t.get("block"), source=source)
         n_xfer += 1
 
+    # 3b. common-input co-spend groups (ownership clustering signal)
+    for group in data.get("cospends", []):
+        store.add_cospend_group(conn, case_id, chain, group)
+
     # 4. built-in KB attribution for anything still unlabeled
     for row in store.list_addresses(conn, case_id, chain):
         kb = labels.lookup(chain, row["address"])
@@ -113,37 +117,51 @@ def asset_breakdown(conn, case_id, chain, address):
     return [{"asset": a, **v} for a, v in rows.items()]
 
 
-def counterparties(conn, case_id, chain, address):
+def counterparties(conn, case_id, chain, address, asset=None):
     """Direct counterparties with net flow direction and volume — the
-    address-inspector table."""
-    rows = {}
-    for e in store.edges_aggregated(conn, case_id, chain):
+    address-inspector table.
+
+    Each counterparty carries an aggregate recv/sent/net plus a per-asset
+    breakdown (`assets`: [{asset, recv, sent, net}]), so a mixed-asset
+    relationship (e.g. +2M USDC but −30 ETH) reads correctly instead of summing
+    non-comparable units. Pass `asset` to restrict to a single token/coin."""
+    rows = {}  # counterparty -> {assets: {sym: {recv, sent}}, n}
+    for e in store.edges_aggregated(conn, case_id, chain, asset=asset):
         if e["src"] == address:
-            rows.setdefault(e["dst"], {"sent": 0, "recv": 0, "n": 0})
-            rows[e["dst"]]["sent"] += e["total"] or 0
-            rows[e["dst"]]["n"] += e["n"]
+            cp, key = e["dst"], "sent"
         elif e["dst"] == address:
-            rows.setdefault(e["src"], {"sent": 0, "recv": 0, "n": 0})
-            rows[e["src"]]["recv"] += e["total"] or 0
-            rows[e["src"]]["n"] += e["n"]
+            cp, key = e["src"], "recv"
+        else:
+            continue
+        r = rows.setdefault(cp, {"assets": {}, "n": 0})
+        a = r["assets"].setdefault(e["asset"], {"recv": 0, "sent": 0})
+        a[key] += e["total"] or 0
+        r["n"] += e["n"]
     out = []
     for addr, agg in rows.items():
         a = store.get_address(conn, case_id, chain, addr) or {}
+        per_asset = [{"asset": sym, "recv": v["recv"], "sent": v["sent"],
+                      "net": v["recv"] - v["sent"]}
+                     for sym, v in sorted(agg["assets"].items())]
+        recv = sum(v["recv"] for v in agg["assets"].values())
+        sent = sum(v["sent"] for v in agg["assets"].values())
         out.append({"address": addr, "label": a.get("label"),
                     "entity": a.get("entity"), "category": a.get("category"),
-                    "risk": a.get("risk", "none"), **agg,
-                    "net": agg["recv"] - agg["sent"]})
+                    "risk": a.get("risk", "none"), "cluster": a.get("cluster"),
+                    "n": agg["n"], "recv": recv, "sent": sent,
+                    "net": recv - sent, "assets": per_asset})
     out.sort(key=lambda r: r["sent"] + r["recv"], reverse=True)
     return out
 
 
-def inspect(conn, case_id, chain, address):
-    """Everything the UI shows when you click a node."""
+def inspect(conn, case_id, chain, address, asset=None):
+    """Everything the UI shows when you click a node. `asset` restricts the
+    metrics and counterparty nets to a single token/coin (the active filter)."""
     a = store.get_address(conn, case_id, chain, address)
     if not a:
         return None
-    a["metrics"] = address_metrics(conn, case_id, chain, address)
-    a["counterparties"] = counterparties(conn, case_id, chain, address)
+    a["metrics"] = address_metrics(conn, case_id, chain, address, asset=asset)
+    a["counterparties"] = counterparties(conn, case_id, chain, address, asset=asset)
     a["holdings"] = store.holdings(conn, case_id, chain, address)
     a["by_asset"] = asset_breakdown(conn, case_id, chain, address)
     return a
@@ -201,7 +219,7 @@ def trace_flow(conn, case_id, chain, seed, hops=3, direction="out", min_value=0.
             "in_value": m["in_value"], "out_value": m["out_value"],
             "tx_count": a.get("tx_count", 0),
             "taint": a.get("taint", 0), "taint_src": a.get("taint_src"),
-            "taint_hops": a.get("taint_hops"),
+            "taint_hops": a.get("taint_hops"), "cluster": a.get("cluster"),
         })
     edges = [{"src": e["src"], "dst": e["dst"], "asset": e["asset"],
               "value": e["total"], "count": e["n"]} for e in kept_edges.values()]
@@ -240,7 +258,7 @@ def graph_view(conn, case_id, chain, asset=None, before=None, after=None):
             "in_value": m["in_value"], "out_value": m["out_value"],
             "tx_count": a.get("tx_count", 0),
             "taint": a.get("taint", 0), "taint_src": a.get("taint_src"),
-            "taint_hops": a.get("taint_hops")})
+            "taint_hops": a.get("taint_hops"), "cluster": a.get("cluster")})
     for e in edges_raw:
         g["edges"].append({"src": e["src"], "dst": e["dst"],
                            "asset": e["asset"], "value": e["total"],
@@ -455,7 +473,7 @@ def find_paths(conn, case_id, chain, src, dst, max_hops=6, directed=True):
             "seed": i == 0, "in_value": m["in_value"], "out_value": m["out_value"],
             "tx_count": a.get("tx_count", 0), "taint": a.get("taint", 0),
             "taint_src": a.get("taint_src"), "taint_hops": a.get("taint_hops"),
-            "on_path": True})
+            "cluster": a.get("cluster"), "on_path": True})
     out_edges = []
     values = []
     for a, b in zip(path, path[1:]):
@@ -467,3 +485,80 @@ def find_paths(conn, case_id, chain, src, dst, max_hops=6, directed=True):
     return {"from": src, "to": dst, "found": True, "path": path,
             "hops": len(path) - 1, "min_value": (min(values) if values else None),
             "directed": directed, "nodes": nodes, "edges": out_edges, "chain": chain}
+
+
+# --- address clustering --------------------------------------------------
+
+def cluster(conn, case_id, chain):
+    """Group addresses into co-ownership clusters (the "who controls this
+    wallet" grouping Arkham-style tools surface) with union-find over two
+    heuristics:
+
+      * common-input ownership — addresses seen together as inputs to one
+        transaction are presumed co-owned (the classic Bitcoin heuristic;
+        captured at import time into chain_cospends).
+      * shared entity attribution — addresses carrying the same entity label
+        belong to the same operator.
+
+    Writes a stable cluster id onto every multi-address cluster's members and
+    returns the cluster summaries (singletons are left unclustered)."""
+    store.reset_clusters(conn, case_id, chain)
+    addrs = store.list_addresses(conn, case_id, chain)
+    parent = {a["address"]: a["address"] for a in addrs}
+
+    def find(x):
+        parent.setdefault(x, x)
+        root = x
+        while parent[root] != root:
+            root = parent[root]
+        while parent[x] != root:       # path compression
+            parent[x], x = root, parent[x]
+        return root
+
+    def union(x, y):
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[max(rx, ry)] = min(rx, ry)   # deterministic root
+
+    # 1. common-input co-spend pairs
+    for a, b in store.cospend_pairs(conn, case_id, chain):
+        union(a, b)
+    # 2. shared entity attribution
+    by_entity = {}
+    for a in addrs:
+        ent = (a.get("entity") or "").strip()
+        if ent:
+            by_entity.setdefault(ent.lower(), []).append(a["address"])
+    for members in by_entity.values():
+        for m in members[1:]:
+            union(members[0], m)
+
+    groups = {}
+    for a in addrs:
+        groups.setdefault(find(a["address"]), []).append(a)
+
+    by_addr = {a["address"]: a for a in addrs}
+    clusters, n = [], 0
+    for root, members in groups.items():
+        if len(members) < 2:
+            continue
+        n += 1
+        cid = f"C{n}"
+        # representative: prefer an entity name, else the richest label
+        ent = next((m.get("entity") for m in members if m.get("entity")), None)
+        lab = next((m.get("label") for m in members if m.get("label")), None)
+        name = ent or lab or (members[0]["address"][:10] + "…")
+        risk = max((m.get("risk", "none") for m in members), key=labels.risk_rank)
+        for m in members:
+            store.set_cluster(conn, case_id, chain, m["address"], cid)
+        clusters.append({
+            "id": cid, "name": name, "entity": ent, "size": len(members),
+            "risk": risk,
+            "addresses": [m["address"] for m in members],
+            "members": [{"address": m["address"], "label": m.get("label"),
+                         "category": m.get("category"), "risk": m.get("risk", "none")}
+                        for m in sorted(members, key=lambda m: -(m.get("tx_count") or 0))],
+        })
+    clusters.sort(key=lambda c: c["size"], reverse=True)
+    return {"clusters": clusters, "count": len(clusters),
+            "clustered": sum(c["size"] for c in clusters), "total": len(addrs)}

@@ -88,6 +88,42 @@ def set_taint(conn, case_id, chain, address, taint, src=None, hops=None):
     conn.commit()
 
 
+# --- co-spend / clustering ----------------------------------------------
+
+def add_cospend_group(conn, case_id, chain, members):
+    """Record a common-input group (all addresses seen together as inputs to one
+    transaction are presumed co-owned). Stored as a star of pairs (first member
+    to each other) — enough to union them later. Idempotent."""
+    members = [m for m in dict.fromkeys(members) if m]  # dedupe, keep order
+    if len(members) < 2:
+        return
+    a = members[0]
+    for b in members[1:]:
+        conn.execute(
+            "INSERT OR IGNORE INTO chain_cospends (case_id, chain, a, b) "
+            "VALUES (?,?,?,?)", (case_id, chain, a, b))
+    conn.commit()
+
+
+def cospend_pairs(conn, case_id, chain):
+    return [(r["a"], r["b"]) for r in conn.execute(
+        "SELECT a, b FROM chain_cospends WHERE case_id=? AND chain=?",
+        (case_id, chain))]
+
+
+def reset_clusters(conn, case_id, chain):
+    conn.execute("UPDATE chain_addresses SET cluster=NULL "
+                 "WHERE case_id=? AND chain=?", (case_id, chain))
+    conn.commit()
+
+
+def set_cluster(conn, case_id, chain, address, cluster):
+    conn.execute(
+        "UPDATE chain_addresses SET cluster=? WHERE case_id=? AND chain=? AND address=?",
+        (cluster, case_id, chain, address))
+    conn.commit()
+
+
 # fields an analyst may override by hand from the inspector
 _ANNOTATABLE = {"label", "entity", "category", "risk", "note"}
 

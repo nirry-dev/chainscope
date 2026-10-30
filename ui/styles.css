@@ -273,6 +273,26 @@ button:active { transform: translateY(1px); }
 .recv { color: var(--ok); } .sent { color: var(--warn); }
 .badge.taint { color: #fed7aa; border-color: #5a3a1d; background: #1c1510; }
 
+/* per-asset counterparty nets (mixed-asset relationships) */
+.cp-assets { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.cp-as { font-size: 10.5px; font-family: var(--mono); padding: 1px 6px; border-radius: 5px;
+  border: 1px solid var(--line-2); font-variant-numeric: tabular-nums; }
+.cp-as.pos { color: var(--ok); border-color: #1d4536; background: #0c1a15; }
+.cp-as.neg { color: var(--warn); border-color: #4d3a1d; background: #1a150c; }
+
+/* cluster list + hulls */
+.clusters { display: flex; flex-direction: column; gap: 4px; }
+.clusters:empty { display: none; }
+.cl-item { display: flex; align-items: center; gap: 7px; padding: 5px 6px; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 12.5px; border: 1px solid transparent; }
+.cl-item:hover { background: var(--panel-2); border-color: var(--line); }
+.cl-dot { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+.cl-name { color: var(--txt); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-size { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.hull { fill-opacity: .07; stroke-opacity: .5; stroke-width: 1.5; stroke-dasharray: 5 4; stroke-linejoin: round; }
+.hull-line { opacity: .1; stroke-linecap: round; }
+.hull-label { font-size: 11px; font-weight: 600; opacity: .72; letter-spacing: .5px; }
+
 /* path quick-set + annotate */
 .insp-actions { display: flex; gap: 7px; margin-top: 14px; }
 .annotate { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
