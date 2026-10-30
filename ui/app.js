@@ -1,8 +1,10 @@
 // Chainscope front-end: force-directed fund-flow graph over the local API.
-// Buildless vanilla JS + SVG. Served same-origin by api.py (API defaults to "").
+// In a browser the page is served same-origin by api.py, so API = "". In the
+// Tauri desktop shell the page loads from tauri://, so point at the local
+// engine the shell spawned on 127.0.0.1:8799. Override with ?api= or localStorage.
 const API = new URLSearchParams(location.search).get("api")
   || localStorage.getItem("chainscope_api")
-  || "";
+  || (/^https?:$/.test(location.protocol) ? "" : "http://127.0.0.1:8799");
 
 const CAT_COLOR = {
   exchange: "#4da3ff", defi: "#22d3ee", mixer: "#ef4444", tumbler: "#ef4444",

@@ -12,6 +12,14 @@ venv/
 build/
 dist/
 
+# desktop build (Tauri + PyInstaller)
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/gen/
+src-tauri/Cargo.lock
+src-tauri/icons/android/
+src-tauri/icons/ios/
+
 # editors / os
 .vscode/
 .idea/
