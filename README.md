@@ -86,6 +86,12 @@ laundered through a mixer and cashed out at an exchange); only the Tornado Cash
 pool address is a real, publicly documented one, used to demonstrate
 attribution. Live explorer import is best-effort and depends on network egress.
 
+A packaged desktop app (Tauri v2 shell + frozen Python engine sidecar) is
+available — see [BUILD-DESKTOP.md](BUILD-DESKTOP.md).
+
 Roadmap: richer label/attribution data, address clustering, token/ERC-20 and
-multi-asset flows, timeline view, saved investigations, and a packaged desktop
-build.
+multi-asset flows, timeline view, and saved investigations.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
