@@ -162,11 +162,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, analyze.ingest(conn, cid, data, source=src))
 
             if sub == ["graph"]:
-                asset = q.get("asset", [None])[0] or None
-                return self._json(200, analyze.graph_view(conn, cid, chain, asset=asset))
+                return self._json(200, analyze.graph_view(
+                    conn, cid, chain, asset=q.get("asset", [None])[0] or None,
+                    before=q.get("before", [None])[0] or None,
+                    after=q.get("after", [None])[0] or None))
 
             if sub == ["assets"]:
                 return self._json(200, {"assets": store.assets(conn, cid, chain)})
+
+            if sub == ["timeline"]:
+                return self._json(200, store.timeline(
+                    conn, cid, chain, asset=q.get("asset", [None])[0] or None))
 
             if sub == ["trace"]:
                 seed = q.get("seed", [None])[0]

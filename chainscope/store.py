@@ -159,19 +159,38 @@ def list_transfers(conn, case_id, chain, address=None, limit=500):
     return [dict(r) for r in cur.fetchall()]
 
 
-def edges_aggregated(conn, case_id, chain, asset=None):
+def edges_aggregated(conn, case_id, chain, asset=None, before=None, after=None):
     """Collapse raw transfers into directed (src,dst,asset) edges with total
     value and a transfer count — the shape the flow-graph visualizer draws.
-    Pass `asset` to restrict to a single token/coin."""
+    Pass `asset` to restrict to one token/coin, and `before`/`after` (ISO ts) to
+    restrict to a time window (for the timeline scrubber)."""
     q = ("SELECT src, dst, asset, COUNT(*) n, SUM(value) total, "
          "       MIN(ts) first_ts, MAX(ts) last_ts "
          "FROM chain_transfers WHERE case_id=? AND chain=?")
     params = [case_id, chain]
     if asset:
-        q += " AND asset=?"
-        params.append(asset)
+        q += " AND asset=?"; params.append(asset)
+    if before:
+        q += " AND ts IS NOT NULL AND ts<=?"; params.append(before)
+    if after:
+        q += " AND ts IS NOT NULL AND ts>=?"; params.append(after)
     q += " GROUP BY src, dst, asset"
     return [dict(r) for r in conn.execute(q, params).fetchall()]
+
+
+def timeline(conn, case_id, chain, asset=None):
+    """Timestamped transfer events (oldest first) for the timeline strip, with
+    the overall time span. Respects the current asset filter."""
+    q = ("SELECT ts, value, asset, src, dst FROM chain_transfers "
+         "WHERE case_id=? AND chain=? AND ts IS NOT NULL")
+    params = [case_id, chain]
+    if asset:
+        q += " AND asset=?"; params.append(asset)
+    q += " ORDER BY ts"
+    rows = [dict(r) for r in conn.execute(q, params).fetchall()]
+    ts = [r["ts"] for r in rows]
+    return {"events": rows, "count": len(rows),
+            "min": ts[0] if ts else None, "max": ts[-1] if ts else None}
 
 
 # --- holdings (per-asset balances) --------------------------------------

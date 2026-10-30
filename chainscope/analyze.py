@@ -73,11 +73,16 @@ def ingest(conn, case_id, data, source="sample"):
 
 # --- metrics -------------------------------------------------------------
 
-def address_metrics(conn, case_id, chain, address, asset=None):
+def address_metrics(conn, case_id, chain, address, asset=None, before=None, after=None):
     """In/out value + counts + counterparties for one address. Pass `asset` to
-    restrict the value/count totals to a single token/coin."""
-    af = " AND asset=?" if asset else ""
-    ap = [asset] if asset else []
+    restrict to a single token/coin and `before`/`after` (ISO ts) to a window."""
+    af, ap = "", []
+    if asset:
+        af += " AND asset=?"; ap.append(asset)
+    if before:
+        af += " AND ts IS NOT NULL AND ts<=?"; ap.append(before)
+    if after:
+        af += " AND ts IS NOT NULL AND ts>=?"; ap.append(after)
     out = conn.execute(
         "SELECT COUNT(*) n, COALESCE(SUM(value),0) v FROM chain_transfers "
         "WHERE case_id=? AND chain=? AND src=?" + af, [case_id, chain, address] + ap).fetchone()
@@ -205,14 +210,27 @@ def trace_flow(conn, case_id, chain, seed, hops=3, direction="out", min_value=0.
             "nodes": nodes, "edges": edges}
 
 
-def graph_view(conn, case_id, chain, asset=None):
-    """The full chain graph for a case (all nodes + aggregated edges), enriched
-    with per-node metrics. `asset` restricts edges/metrics to one token/coin.
-    The default visualizer view."""
+def graph_view(conn, case_id, chain, asset=None, before=None, after=None):
+    """The full chain graph for a case (nodes + aggregated edges), enriched with
+    per-node metrics. `asset` restricts to one token/coin; `before`/`after` (ISO
+    ts) restrict to a time window — and when a window is set, only wallets that
+    have transacted within it are shown (so the network grows as the timeline
+    scrubber advances)."""
+    edges_raw = store.edges_aggregated(conn, case_id, chain, asset=asset,
+                                       before=before, after=after)
     g = {"nodes": [], "edges": [], "chain": chain, "asset": asset,
          "assets": store.assets(conn, case_id, chain)}
-    for a in store.list_addresses(conn, case_id, chain):
-        m = address_metrics(conn, case_id, chain, a["address"], asset=asset)
+    if before or after:
+        live = set()
+        for e in edges_raw:
+            live.add(e["src"]); live.add(e["dst"])
+        rows = [a for a in store.list_addresses(conn, case_id, chain)
+                if a["address"] in live or a.get("seed")]
+    else:
+        rows = store.list_addresses(conn, case_id, chain)
+    for a in rows:
+        m = address_metrics(conn, case_id, chain, a["address"], asset=asset,
+                            before=before, after=after)
         g["nodes"].append({
             "address": a["address"], "hop": 0 if a.get("seed") else 1,
             "label": a.get("label"), "entity": a.get("entity"),
@@ -223,7 +241,7 @@ def graph_view(conn, case_id, chain, asset=None):
             "tx_count": a.get("tx_count", 0),
             "taint": a.get("taint", 0), "taint_src": a.get("taint_src"),
             "taint_hops": a.get("taint_hops")})
-    for e in store.edges_aggregated(conn, case_id, chain, asset=asset):
+    for e in edges_raw:
         g["edges"].append({"src": e["src"], "dst": e["dst"],
                            "asset": e["asset"], "value": e["total"],
                            "count": e["n"]})

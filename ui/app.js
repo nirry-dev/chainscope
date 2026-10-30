@@ -19,6 +19,8 @@ let nodes = [], edges = [], nodeById = {}, adj = {};
 let running = false, frozen = false, raf = null, heat = 1;
 let view = { x: 0, y: 0, k: 1 };
 let W = 800, H = 600, selected = null, hoverAddr = null;
+// timeline scrubber state (ms since epoch)
+let tlEvents = [], tlMin = 0, tlMax = 0, tlCursor = 0, tlPlaying = false, tlTimer = null, tlFetch = null, tlScrub = false;
 
 const svg = document.getElementById("graph");
 const SVGNS = "http://www.w3.org/2000/svg";
@@ -79,6 +81,7 @@ async function refreshAll() {
   populateAssets(g.assets || []);
   ingestGraph(g);
   await loadFlags();
+  await loadTimeline();
 }
 function populateAssets(assets) {
   const sel = document.getElementById("assetSelect");
@@ -520,6 +523,65 @@ function wireEmpty() {
   document.querySelectorAll(".js-load").forEach(b => b.onclick = loadSample);
   const e = document.getElementById("emptyLoadBtn"); if (e) e.onclick = loadSample;
 }
+// ---------- timeline scrubber ----------
+async function loadTimeline() {
+  tlStop();
+  const box = document.getElementById("timeline");
+  let tl;
+  try { tl = await api(`/api/cases/${currentCase}/timeline?chain=${chain}&asset=${encodeURIComponent(asset)}`); }
+  catch { box.classList.add("hidden"); return; }
+  tlEvents = (tl.events || []).map(e => ({ t: Date.parse(e.ts), v: e.value, asset: e.asset }));
+  if (!tlEvents.length || !tl.min) { box.classList.add("hidden"); return; }
+  box.classList.remove("hidden");
+  tlMin = Date.parse(tl.min); tlMax = Date.parse(tl.max);
+  if (tlMax <= tlMin) tlMax = tlMin + 1;
+  tlCursor = tlMax;
+  renderTimeline();
+}
+function renderTimeline() {
+  const svg = document.getElementById("tlHist");
+  const w = svg.clientWidth || 600, h = svg.clientHeight || 34, B = 48, span = tlMax - tlMin;
+  const buckets = new Array(B).fill(0);
+  for (const e of tlEvents) {
+    let f = (e.t - tlMin) / span; f = Math.max(0, Math.min(0.999, f));
+    buckets[Math.floor(f * B)]++;
+  }
+  const maxB = Math.max(1, ...buckets), bw = w / B, cf = (tlCursor - tlMin) / span;
+  svg.innerHTML = buckets.map((c, i) => {
+    const bh = c ? Math.max(2, (c / maxB) * (h - 4)) : 0;
+    const on = (i + 0.5) / B <= cf;
+    return `<rect class="tl-bar ${on ? "on" : ""}" x="${(i * bw + 1).toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${Math.max(1, bw - 1.5).toFixed(1)}" height="${bh.toFixed(1)}" rx="1"/>`;
+  }).join("");
+  document.getElementById("tlCursor").style.left = (Math.max(0, Math.min(1, cf)) * 100) + "%";
+  const n = tlEvents.filter(e => e.t <= tlCursor).length, atMax = tlCursor >= tlMax;
+  document.getElementById("tlReadout").innerHTML =
+    `<b>${n}</b>/${tlEvents.length} · ${atMax ? "all" : new Date(tlCursor).toISOString().slice(0, 16).replace("T", " ")}`;
+}
+function setCursor(ms) {
+  tlCursor = Math.max(tlMin, Math.min(tlMax, ms));
+  renderTimeline();
+  clearTimeout(tlFetch);
+  tlFetch = setTimeout(async () => {
+    const before = tlCursor >= tlMax ? "" : new Date(tlCursor).toISOString();
+    try {
+      const g = await api(`/api/cases/${currentCase}/graph?chain=${chain}&asset=${encodeURIComponent(asset)}${before ? `&before=${encodeURIComponent(before)}` : ""}`);
+      ingestGraph(g);  // keeps node positions; no fit, so the network grows in place
+    } catch (e) { /* ignore transient */ }
+  }, 90);
+}
+function tlStop() { tlPlaying = false; clearInterval(tlTimer); tlTimer = null; const b = document.getElementById("tlPlay"); if (b) b.textContent = "▶"; }
+function tlToggle() {
+  if (tlPlaying) return tlStop();
+  if (!tlEvents.length) return;
+  tlPlaying = true; document.getElementById("tlPlay").textContent = "❚❚";
+  if (tlCursor >= tlMax) setCursor(tlMin);
+  tlTimer = setInterval(() => {
+    const next = tlEvents.map(e => e.t).filter(t => t > tlCursor + 1).sort((a, b) => a - b)[0];
+    if (next == null) { setCursor(tlMax); tlStop(); return; }
+    setCursor(next);
+  }, 750);
+}
+
 function wire() {
   document.getElementById("caseSelect").onchange = async (e) => { currentCase = +e.target.value; selected = null; await refreshAll(); setTimeout(fit, 450); };
   document.getElementById("newCaseBtn").onclick = async () => {
@@ -564,6 +626,12 @@ function wire() {
   document.getElementById("search").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
   document.getElementById("zoomInBtn").onclick = () => zoomAround(W / 2, H / 2, 1.2);
   document.getElementById("zoomOutBtn").onclick = () => zoomAround(W / 2, H / 2, 0.83);
+  document.getElementById("tlPlay").onclick = tlToggle;
+  const track = document.getElementById("tlTrack");
+  const curFromX = (ev) => { const r = track.getBoundingClientRect(); let f = (ev.clientX - r.left) / r.width; f = Math.max(0, Math.min(1, f)); setCursor(tlMin + f * (tlMax - tlMin)); };
+  track.addEventListener("pointerdown", (ev) => { tlStop(); tlScrub = true; try { track.setPointerCapture(ev.pointerId); } catch (_) {} curFromX(ev); });
+  track.addEventListener("pointermove", (ev) => { if (tlScrub) curFromX(ev); });
+  track.addEventListener("pointerup", () => { tlScrub = false; });
   document.getElementById("fitBtn").onclick = fit;
   document.getElementById("freezeBtn").onclick = (e) => {
     frozen = !frozen; e.target.classList.toggle("active", frozen);

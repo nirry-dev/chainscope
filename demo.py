@@ -93,6 +93,14 @@ def main():
     for f in store.list_flags(conn, cid2):
         print(f"     [{f['severity']:>8}] {f['title']}")
 
+    hr("9. Timeline window (watch the flow unfold)")
+    tl = store.timeline(conn, cid2, "eth")
+    print(f"   {tl['count']} events  {tl['min']} .. {tl['max']}")
+    early = analyze.graph_view(conn, cid2, "eth", before="2026-03-04T01:41:00Z")
+    full = analyze.graph_view(conn, cid2, "eth")
+    print(f"   graph before 01:41: {len(early['nodes'])} nodes / {len(early['edges'])} edges")
+    print(f"   graph full:         {len(full['nodes'])} nodes / {len(full['edges'])} edges")
+
     print("\nOK - chainscope works end to end, offline.")
 
 
