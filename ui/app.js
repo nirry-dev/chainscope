@@ -64,8 +64,82 @@ async function loadCases() {
     sel.appendChild(opt(id, "#" + id + " Investigation 1")); return;
   }
   for (const c of cases) sel.appendChild(opt(c.id, `#${c.id} ${c.name}`));
-  if (!cases.find(c => c.id === currentCase)) currentCase = cases[0].id;
+  if (currentCase == null) {
+    const stored = +(localStorage.getItem("chainscope_case") || 0);
+    currentCase = cases.find(c => c.id === stored) ? stored : cases[0].id;
+  } else if (!cases.find(c => c.id === currentCase)) {
+    currentCase = cases[0].id;
+  }
   sel.value = currentCase;
+  persistCase();
+}
+function persistCase() { try { localStorage.setItem("chainscope_case", String(currentCase)); } catch (_) {} }
+
+// ---------- investigations manager ----------
+async function openCaseManager() {
+  const { cases } = await api("/api/cases");
+  renderCaseList(cases);
+  document.getElementById("caseModal").classList.remove("hidden");
+}
+function closeCaseManager() { document.getElementById("caseModal").classList.add("hidden"); }
+function renderCaseList(cases) {
+  const box = document.getElementById("caseList");
+  if (!cases.length) { box.innerHTML = `<div class="hint">No investigations yet — create one above.</div>`; return; }
+  box.innerHTML = cases.map(c => {
+    const cu = c.counts || {};
+    const la = c.last_activity ? ` · last ${c.last_activity.slice(0, 10)}` : "";
+    return `<div class="case-card ${c.id === currentCase ? "current" : ""}">
+      <div class="cc-top"><span class="cc-name">${esc(c.name)}</span>${c.id === currentCase ? '<span class="cc-cur">open</span>' : ""}</div>
+      ${c.note ? `<div class="cc-note">${esc(c.note)}</div>` : ""}
+      <div class="cc-meta">
+        <span class="cc-chip"><b>${cu.addresses || 0}</b> wallets</span>
+        <span class="cc-chip"><b>${cu.transfers || 0}</b> transfers</span>
+        <span class="cc-chip flags"><b>${cu.flags || 0}</b> flags</span>
+        <span class="cc-chip">${(c.created_at || "").slice(0, 10)}${la}</span>
+      </div>
+      <div class="cc-actions">
+        <button class="btn primary" data-act="open">Open</button>
+        <button class="btn ghost" data-act="rename">Rename</button>
+        <button class="btn ghost" data-act="note">Note</button>
+        <button class="btn ghost cc-del" data-act="delete">Delete</button>
+      </div></div>`;
+  }).join("");
+  const cards = box.querySelectorAll(".case-card");
+  cases.forEach((c, i) => cards[i].querySelectorAll("[data-act]").forEach(b => {
+    if (b.dataset.act === "delete") b.onclick = () => confirmDelete(b, c);
+    else b.onclick = () => caseAction(b.dataset.act, c);
+  }));
+}
+async function caseAction(act, c) {
+  if (act === "open") return openCase(c.id);
+  if (act === "rename") {
+    const n = prompt("Rename investigation:", c.name);
+    if (!n || !n.trim()) return;
+    await api(`/api/cases/${c.id}`, "POST", { name: n.trim() });
+    await loadCases(); openCaseManager();
+  } else if (act === "note") {
+    const n = prompt("Note:", c.note || "");
+    if (n === null) return;
+    await api(`/api/cases/${c.id}`, "POST", { note: n });
+    openCaseManager();
+  }
+}
+function confirmDelete(btn, c) {           // two-click inline confirm (no native dialog)
+  if (btn.dataset.armed === "1") return deleteCase(c);
+  btn.dataset.armed = "1"; btn.textContent = "Confirm?"; btn.classList.add("armed");
+  setTimeout(() => { if (btn.isConnected) { btn.dataset.armed = ""; btn.textContent = "Delete"; btn.classList.remove("armed"); } }, 3000);
+}
+async function deleteCase(c) {
+  await api(`/api/cases/${c.id}/delete`, "POST");
+  if (c.id === currentCase) currentCase = null;
+  await loadCases(); await refreshAll(); setTimeout(fit, 400);
+  openCaseManager();
+}
+async function openCase(id) {
+  currentCase = id; persistCase(); asset = ""; selected = null;
+  document.getElementById("caseSelect").value = id;
+  closeCaseManager();
+  await refreshAll(); setTimeout(fit, 400);
 }
 async function loadSamples() {
   const { samples } = await api("/api/samples");
@@ -583,13 +657,18 @@ function tlToggle() {
 }
 
 function wire() {
-  document.getElementById("caseSelect").onchange = async (e) => { currentCase = +e.target.value; selected = null; await refreshAll(); setTimeout(fit, 450); };
-  document.getElementById("newCaseBtn").onclick = async () => {
-    const name = prompt("New investigation name:", "Investigation");
+  document.getElementById("caseSelect").onchange = async (e) => { currentCase = +e.target.value; persistCase(); selected = null; asset = ""; await refreshAll(); setTimeout(fit, 450); };
+  document.getElementById("newCaseBtn").onclick = openCaseManager;
+  document.querySelectorAll("#caseModal [data-close]").forEach(b => b.onclick = closeCaseManager);
+  document.getElementById("newCaseForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = document.getElementById("ncName").value.trim();
     if (!name) return;
-    const { id } = await api("/api/cases", "POST", { name });
-    currentCase = id; selected = null; await loadCases(); await refreshAll(); toast("case #" + id + " created");
-  };
+    const note = document.getElementById("ncNote").value.trim();
+    const { id } = await api("/api/cases", "POST", { name, note: note || null });
+    document.getElementById("ncName").value = ""; document.getElementById("ncNote").value = "";
+    await loadCases(); await openCase(id); toast("investigation created");
+  });
   document.getElementById("chainSelect").onchange = async (e) => { chain = e.target.value; asset = ""; await refreshAll(); setTimeout(fit, 450); };
   document.getElementById("assetSelect").onchange = async (e) => { asset = e.target.value; await refreshAll(); setTimeout(fit, 450); };
   document.getElementById("loadSampleBtn").onclick = loadSample;

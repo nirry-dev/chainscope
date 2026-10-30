@@ -24,7 +24,7 @@
     <div class="ctrl-group">
       <label class="ctrl"><span class="ctrl-k">case</span>
         <select id="caseSelect" title="Active investigation"></select></label>
-      <button id="newCaseBtn" class="btn icon" title="New investigation">+</button>
+      <button id="newCaseBtn" class="btn icon" title="Manage investigations">⋯</button>
       <label class="ctrl"><span class="ctrl-k">chain</span>
         <select id="chainSelect" title="Chain">
           <option value="eth">ethereum</option>
@@ -145,6 +145,22 @@
         <button class="btn primary js-load" id="emptyLoadBtn">Load sample</button>
       </div>
     </aside>
+  </div>
+
+  <div id="caseModal" class="modal hidden">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>◈ Investigations</h3>
+        <button class="btn ghost icon" data-close title="Close">✕</button>
+      </div>
+      <form id="newCaseForm" class="newcase">
+        <input id="ncName" placeholder="New investigation name" autocomplete="off" />
+        <input id="ncNote" placeholder="note (optional)" autocomplete="off" />
+        <button class="btn primary">Create</button>
+      </form>
+      <div id="caseList" class="case-list"></div>
+    </div>
   </div>
 
   <script src="app.js"></script>

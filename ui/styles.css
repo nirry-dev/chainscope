@@ -169,6 +169,7 @@ button:active { transform: translateY(1px); }
   border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 12px; }
 
 /* timeline scrubber */
+.timeline.hidden { display: none; }
 .timeline { position: absolute; left: 14px; right: 14px; bottom: 14px; z-index: 7;
   display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 14px;
   background: rgba(12, 17, 26, .9); backdrop-filter: blur(8px);
@@ -283,6 +284,35 @@ button:active { transform: translateY(1px); }
   color: var(--faint); margin: 8px 0 3px; }
 .annotate input, .annotate select, .annotate textarea { width: 100%; }
 .annotate textarea { resize: vertical; min-height: 44px; }
+
+/* ---------- investigations manager modal ---------- */
+.modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
+.modal.hidden { display: none; }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(4, 7, 12, .66); backdrop-filter: blur(2px); }
+.modal-box { position: relative; width: 560px; max-width: calc(100vw - 32px); max-height: 82vh; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 14px; box-shadow: var(--shadow); padding: 18px; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.modal-head h3 { margin: 0; font-size: 15px; letter-spacing: .3px; }
+.newcase { display: flex; gap: 8px; margin-bottom: 16px; }
+.newcase #ncName { flex: 1.4; } .newcase #ncNote { flex: 1; }
+.case-list { display: flex; flex-direction: column; gap: 9px; }
+.case-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 13px; background: var(--panel-2);
+  transition: border-color .15s; }
+.case-card:hover { border-color: var(--line-2); }
+.case-card.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.case-card .cc-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.case-card .cc-name { font-weight: 600; font-size: 14px; }
+.case-card .cc-cur { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--accent); }
+.case-card .cc-note { color: var(--muted); font-size: 12.5px; margin: 4px 0 0; }
+.case-card .cc-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.cc-chip { font-size: 11px; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--line); color: var(--muted); font-variant-numeric: tabular-nums; }
+.cc-chip b { color: var(--txt); }
+.cc-chip.flags b { color: var(--bad); }
+.case-card .cc-actions { display: flex; gap: 6px; margin-top: 11px; }
+.case-card .cc-actions .btn { padding: 4px 10px; font-size: 12px; }
+.cc-del { color: var(--bad); border-color: #4d2020; }
+.cc-del:hover { background: #241316; border-color: #6d2b2b; }
+.cc-del.armed { background: var(--crit); color: #fff; border-color: var(--crit); font-weight: 600; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 1100px) {

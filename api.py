@@ -120,7 +120,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if parts == ["api", "cases"]:
             if method == "GET":
-                return self._json(200, {"cases": db.list_cases(conn)})
+                return self._json(200, {"cases": db.cases_overview(conn)})
             body = self._body()
             name = (body.get("name") or "").strip()
             if not name:
@@ -139,7 +139,15 @@ class Handler(BaseHTTPRequestHandler):
             chain = q.get("chain", ["eth"])[0]
 
             if sub == []:
-                return self._json(200, case_summary(conn, cid))
+                if method == "GET":
+                    return self._json(200, case_summary(conn, cid))
+                body = self._body()
+                db.update_case(conn, cid, name=body.get("name"), note=body.get("note"))
+                return self._json(200, {"ok": True})
+
+            if sub == ["delete"]:
+                db.delete_case(conn, cid)
+                return self._json(200, {"ok": True})
 
             if sub == ["import"]:
                 body = self._body()

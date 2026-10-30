@@ -137,3 +137,41 @@ def get_case(conn, case_id):
 def list_cases(conn):
     cur = conn.execute("SELECT * FROM cases ORDER BY id DESC")
     return [dict(r) for r in cur.fetchall()]
+
+
+def update_case(conn, case_id, name=None, note=None):
+    sets, vals = [], []
+    if name is not None and name.strip():
+        sets.append("name=?"); vals.append(name.strip())
+    if note is not None:
+        sets.append("note=?"); vals.append(note)
+    if not sets:
+        return
+    vals.append(case_id)
+    conn.execute(f"UPDATE cases SET {', '.join(sets)} WHERE id=?", vals)
+    conn.commit()
+
+
+def delete_case(conn, case_id):
+    """Delete a case and everything scoped to it."""
+    for t in ("chain_holdings", "chain_transfers", "chain_addresses", "flags"):
+        conn.execute(f"DELETE FROM {t} WHERE case_id=?", (case_id,))
+    conn.execute("DELETE FROM cases WHERE id=?", (case_id,))
+    conn.commit()
+
+
+def cases_overview(conn):
+    """Every case with its counts and latest on-chain activity — for the
+    investigations manager."""
+    out = []
+    for c in list_cases(conn):
+        cid = c["id"]
+        c["counts"] = {
+            "addresses": conn.execute("SELECT COUNT(*) n FROM chain_addresses WHERE case_id=?", (cid,)).fetchone()["n"],
+            "transfers": conn.execute("SELECT COUNT(*) n FROM chain_transfers WHERE case_id=?", (cid,)).fetchone()["n"],
+            "flags": conn.execute("SELECT COUNT(*) n FROM flags WHERE case_id=?", (cid,)).fetchone()["n"],
+        }
+        c["last_activity"] = conn.execute(
+            "SELECT MAX(ts) t FROM chain_transfers WHERE case_id=?", (cid,)).fetchone()["t"]
+        out.append(c)
+    return out
