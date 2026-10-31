@@ -1,5 +1,10 @@
 # Chainscope
 
+[![CI](https://github.com/nirry-dev/chainscope/actions/workflows/ci.yml/badge.svg)](https://github.com/nirry-dev/chainscope/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue)
+![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen)
+
 A blockchain **transaction & wallet analyzer / visualizer** — an on-chain OSINT
 and fund-tracing tool. It inspects *public* transaction history and turns it
 into a readable entity graph: wallets and contracts become nodes, value
