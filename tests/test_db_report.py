@@ -20,6 +20,22 @@ def test_flags_are_chain_scoped(eth_case):
     assert len(store.list_flags(conn, cid)) == len(store.list_flags(conn, cid, "eth"))
 
 
+def test_flag_triage_status(eth_case):
+    conn, cid = eth_case
+    analyze.risk_scan(conn, cid, "eth")
+    flags = store.list_flags(conn, cid, "eth")
+    fid = flags[0]["id"]
+    assert (flags[0]["status"] or "open") == "open"
+    assert store.set_flag_status(conn, cid, fid, "false_positive") is True
+    assert store.set_flag_status(conn, cid, fid, "bogus") is False      # rejected
+    assert store.set_flag_status(conn, cid, 999999, "confirmed") is False  # no such flag
+    again = {f["id"]: f["status"] for f in store.list_flags(conn, cid, "eth")}
+    assert again[fid] == "false_positive"
+    assert store.set_flag_status(conn, cid, fid, "open") is True         # reopen
+    md = report.build_markdown(conn, cid, "eth")
+    assert "Status" in md   # status column present in the flags table
+
+
 def test_delete_case_cascades(eth_case):
     conn, cid = eth_case
     analyze.risk_scan(conn, cid, "eth")

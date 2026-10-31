@@ -191,8 +191,9 @@ def build_markdown(conn, case_id, chain="eth"):
     if d["flags"]:
         L.append("## Risk flags")
         L.append("")
-        L.append(_tbl(["Severity", "Finding", "Score"],
-                      [[f["severity"], f["title"], round(f.get("score") or 0)] for f in d["flags"]]))
+        L.append(_tbl(["Severity", "Finding", "Score", "Status"],
+                      [[f["severity"], f["title"], round(f.get("score") or 0),
+                        (f.get("status") or "open").replace("_", " ")] for f in d["flags"]]))
         L.append("")
 
     # flagged / notable entities

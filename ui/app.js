@@ -434,11 +434,11 @@ function renderEntity(e) {
   const cps = (e.counterparties || []).map(c => {
     const cc = (c.risk === "sanctioned" || FLAGGED.has(c.category)) ? CAT_COLOR.mixer : (CAT_COLOR[c.category] || CAT_COLOR.unknown);
     const chips = (c.assets || []).map(x => `<span class="cp-as ${x.net >= 0 ? "pos" : "neg"}">${esc(x.asset)} ${x.net >= 0 ? "+" : "−"}${fmt(Math.abs(x.net))}</span>`).join("");
-    return `<tr><td><span class="cp-addr" data-a="${c.address}"><span class="cp-dot" style="background:${cc}"></span><span class="cp-name">${c.label ? esc(c.label) : short(c.address)}</span></span>${c.risk && c.risk !== "none" ? `<span class="badge risk-${c.risk}">${c.risk}</span>` : ""}<div class="cp-assets">${chips}</div></td></tr>`;
+    return `<tr><td><span class="cp-addr" data-a="${esc(c.address)}"><span class="cp-dot" style="background:${cc}"></span><span class="cp-name">${c.label ? esc(c.label) : esc(short(c.address))}</span></span>${c.risk && c.risk !== "none" ? `<span class="badge risk-${c.risk}">${c.risk}</span>` : ""}<div class="cp-assets">${chips}</div></td></tr>`;
   }).join("");
   const members = (e.members || []).map(m => {
     const cc = (m.risk === "sanctioned" || FLAGGED.has(m.category)) ? CAT_COLOR.mixer : (CAT_COLOR[m.category] || CAT_COLOR.unknown);
-    return `<div class="ent-mem" data-a="${m.address}"><span class="cp-dot" style="background:${cc}"></span><span class="cp-name">${m.label ? esc(m.label) : short(m.address)}</span><span class="ent-tx">${m.tx_count || 0} tx</span></div>`;
+    return `<div class="ent-mem" data-a="${esc(m.address)}"><span class="cp-dot" style="background:${cc}"></span><span class="cp-name">${m.label ? esc(m.label) : esc(short(m.address))}</span><span class="ent-tx">${m.tx_count || 0} tx</span></div>`;
   }).join("");
   box.innerHTML = `
     <div class="insp-head">
@@ -469,7 +469,7 @@ function renderEntity(e) {
 function rowAddr(h) {
   const cc = (h.risk === "sanctioned" || FLAGGED.has(h.category)) ? CAT_COLOR.mixer : (CAT_COLOR[h.category] || CAT_COLOR.unknown);
   const amt = h.balance != null ? fmt(h.balance) : fmt(h.value);
-  return `<tr><td><span class="cp-addr" data-a="${h.address}"><span class="cp-dot" style="background:${cc}"></span><span class="cp-name">${h.label ? esc(h.label) : short(h.address)}</span></span></td><td class="num">${amt}</td><td class="num muted-usd">${h.usd != null ? usd(h.usd) : ""}</td></tr>`;
+  return `<tr><td><span class="cp-addr" data-a="${esc(h.address)}"><span class="cp-dot" style="background:${cc}"></span><span class="cp-name">${h.label ? esc(h.label) : esc(short(h.address))}</span></span></td><td class="num">${amt}</td><td class="num muted-usd">${h.usd != null ? usd(h.usd) : ""}</td></tr>`;
 }
 function renderAssetDash(d) {
   const box = document.getElementById("inspector");
@@ -536,7 +536,7 @@ async function loadFeed() {
 }
 function feedCell(side) {
   const col = (side.risk === "sanctioned" || FLAGGED.has(side.category)) ? CAT_COLOR.mixer : (CAT_COLOR[side.category] || CAT_COLOR.unknown);
-  return `<span class="cp-addr" data-a="${side.address}"><span class="cp-dot" style="background:${col}"></span><span class="cp-name">${side.label ? esc(side.label) : short(side.address)}</span></span>`;
+  return `<span class="cp-addr" data-a="${esc(side.address)}"><span class="cp-dot" style="background:${col}"></span><span class="cp-name">${side.label ? esc(side.label) : esc(short(side.address))}</span></span>`;
 }
 function renderFeed(d) {
   const scoped = !!d.address;
@@ -597,7 +597,7 @@ function showTip(n, ev) {
   const risk = n.risk && n.risk !== "none" ? ` · risk ${n.risk}` : "";
   const taint = (n.taint || 0) >= 0.15 ? `<br><span style="color:#fb923c">taint ${Math.round(n.taint * 100)}% · ${n.taint_hops}h from ${esc(n.taint_src || "?")}</span>` : "";
   tip.innerHTML = `<div class="tt-label">${esc(n.label || "Unlabeled wallet")}</div>
-    <div class="tt-addr">${short(n.address)}</div>
+    <div class="tt-addr">${esc(short(n.address))}</div>
     <div class="tt-meta">${esc(n.category || "unknown")}${risk}<br>
       bal ${fmt(n.balance)} · in ${fmt(n.in_value)} · out ${fmt(n.out_value)}${taint}</div>`;
   tip.classList.add("show"); moveTip(ev);
@@ -685,8 +685,8 @@ function renderInspector(a) {
     const chips = multi ? `<div class="cp-assets">` + assets.map(x =>
       `<span class="cp-as ${x.net >= 0 ? "pos" : "neg"}">${esc(x.asset)} ${x.net >= 0 ? "+" : "−"}${fmt(Math.abs(x.net))}</span>`).join("") + `</div>` : "";
     return `<tr>
-      <td><span class="cp-addr" data-a="${c.address}"><span class="cp-dot" style="background:${col}"></span>
-        <span class="cp-name">${c.label ? esc(c.label) : short(c.address)}</span></span>
+      <td><span class="cp-addr" data-a="${esc(c.address)}"><span class="cp-dot" style="background:${col}"></span>
+        <span class="cp-name">${c.label ? esc(c.label) : esc(short(c.address))}</span></span>
         ${c.risk && c.risk !== "none" ? `<span class="badge risk-${c.risk}">${c.risk}</span>` : ""}${chips}</td>
       <td class="num recv">${!multi && c.recv ? "+" + fmt(c.recv) : ""}</td>
       <td class="num sent">${!multi && c.sent ? "−" + fmt(c.sent) : ""}</td></tr>`;
@@ -710,11 +710,11 @@ function renderInspector(a) {
   box.className = "inspector insp";
   box.innerHTML = `
     <div class="insp-head">
-      <div class="monogram" style="background:${monoColor(a)}">${initials(a)}</div>
+      <div class="monogram" style="background:${monoColor(a)}">${esc(initials(a))}</div>
       <div class="insp-title">
         <div class="insp-label">${a.label ? esc(a.label) : "Unlabeled wallet"}</div>
-        <div class="insp-addr"><span class="a">${a.address}</span>
-          <button class="copy" title="Copy address" data-copy="${a.address}">
+        <div class="insp-addr"><span class="a">${esc(a.address)}</span>
+          <button class="copy" title="Copy address" data-copy="${esc(a.address)}">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4">
               <rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2H3.5A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/></svg>
           </button></div>
@@ -783,20 +783,40 @@ async function saveAnnotation(address) {
   } catch (e) { toast("save failed: " + e.message); }
 }
 
+const DISMISSED = f => f.status === "false_positive" || f.status === "resolved";
 async function loadFlags() {
   const { flags } = await api(`/api/cases/${currentCase}/flags?chain=${chain}`);
   const sum = document.getElementById("riskSummary");
   const box = document.getElementById("flagsList");
   const counts = {};
-  for (const f of flags) counts[f.severity] = (counts[f.severity] || 0) + 1;
+  for (const f of flags) if (!DISMISSED(f)) counts[f.severity] = (counts[f.severity] || 0) + 1;
   sum.innerHTML = ["critical", "high", "medium", "low"].filter(s => counts[s])
     .map(s => `<span class="rchip ${s}"><span class="d"></span><b>${counts[s]}</b> ${s}</span>`).join("");
   if (!flags.length) { box.innerHTML = `<div class="hint empty-flags">No risk flags yet — run a scan.</div>`; return; }
-  box.innerHTML = flags.map(f => `
-    <div class="flag sev-${f.severity}">
+  // active flags first (by score), triaged-away flags sink to the bottom
+  const sorted = flags.slice().sort((a, b) => (DISMISSED(a) - DISMISSED(b)) || (b.score || 0) - (a.score || 0));
+  box.innerHTML = sorted.map(f => {
+    const open = !f.status || f.status === "open";
+    const st = f.status && f.status !== "open"
+      ? `<span class="flag-st ${f.status}">${f.status.replace("_", " ")}</span>` : "";
+    const actions = open
+      ? `<button class="flag-btn ok" data-fid="${f.id}" data-st="confirmed" title="Confirm finding">✓</button>
+         <button class="flag-btn no" data-fid="${f.id}" data-st="false_positive" title="Dismiss as false positive">✕</button>`
+      : `<button class="flag-btn" data-fid="${f.id}" data-st="open" title="Reopen">↺</button>`;
+    return `<div class="flag sev-${f.severity}${DISMISSED(f) ? " dismissed" : ""}">
       <div class="ft">${esc(f.title)}</div>
-      <div class="fm"><span class="sev-pill">${f.severity}</span> score ${Math.round(f.score || 0)}</div>
-    </div>`).join("");
+      <div class="fm"><span class="sev-pill">${f.severity}</span> score ${Math.round(f.score || 0)}${st}
+        <span class="flag-actions">${actions}</span></div>
+    </div>`;
+  }).join("");
+  box.querySelectorAll(".flag-btn").forEach(b => b.onclick = () => setFlagStatus(+b.dataset.fid, b.dataset.st));
+}
+async function setFlagStatus(fid, status) {
+  try {
+    await api(`/api/cases/${currentCase}/flags/${fid}`, "POST", { status });
+    await loadFlags();
+    toast(status === "false_positive" ? "flag dismissed" : status === "confirmed" ? "flag confirmed" : "flag reopened");
+  } catch (e) { toast("update failed: " + e.message); }
 }
 
 // ---------- actions ----------
@@ -1024,7 +1044,7 @@ function sparkline(series, w = 236, h = 42) {
   const zero = (mn < 0 && mx > 0) ? `<line class="spark-zero" x1="2" y1="${Y(0).toFixed(1)}" x2="${w - 2}" y2="${Y(0).toFixed(1)}"/>` : "";
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${zero}<path class="spark-area" d="${area}"/><path class="spark-line" d="${pts}"/></svg>`;
 }
-function esc(s) { return (s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function esc(s) { return (s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
 wire();
 boot();

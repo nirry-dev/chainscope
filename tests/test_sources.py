@@ -49,3 +49,34 @@ def test_fetch_evm_requires_key_and_base():
         sources.fetch_evm("0x" + "a" * 40, "https://api.example", "")
     with pytest.raises(ValueError):
         sources.fetch_evm("0x" + "a" * 40, "", "key")
+
+
+def test_fetch_evm_merges_native_and_erc20(monkeypatch):
+    def fake(url, timeout=15, retries=1):
+        if "action=txlist" in url:
+            return {"status": "1", "result": [
+                {"hash": "0xnat", "from": "0xaaa", "to": "0xbbb",
+                 "value": "1000000000000000000", "timeStamp": "1700000000", "blockNumber": "1"}]}
+        if "action=tokentx" in url:
+            return {"status": "1", "result": [
+                {"hash": "0xtok", "from": "0xaaa", "to": "0xccc", "value": "2500000",
+                 "tokenSymbol": "USDC", "tokenDecimal": "6",
+                 "timeStamp": "1700000100", "blockNumber": "2"}]}
+        return {"status": "0", "message": "No transactions found", "result": []}
+    monkeypatch.setattr(sources, "_get_json", fake)
+    d = sources.fetch_evm("0x" + "a" * 40, "https://api.example", "key")
+    by = {t["asset"]: t for t in d["transfers"]}
+    assert by["ETH"]["value"] == 1.0
+    assert by["USDC"]["value"] == 2.5          # 2500000 / 10**6 decimals
+
+
+def test_fetch_evm_token_failure_keeps_native(monkeypatch):
+    def fake(url, timeout=15, retries=1):
+        if "action=txlist" in url:
+            return {"status": "1", "result": [
+                {"hash": "0xnat", "from": "0xaaa", "to": "0xbbb",
+                 "value": "0", "timeStamp": "1700000000", "blockNumber": "1"}]}
+        raise ValueError("explorer HTTP 429 Too Many Requests")   # token pass fails
+    monkeypatch.setattr(sources, "_get_json", fake)
+    d = sources.fetch_evm("0x" + "a" * 40, "https://api.example", "key")
+    assert [t["asset"] for t in d["transfers"]] == ["ETH"]        # native survived

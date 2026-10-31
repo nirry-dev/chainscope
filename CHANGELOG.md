@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Live EVM import now pulls **ERC-20 token transfers** (`tokentx`) alongside
+  native ETH, valued per each token's decimals/symbol (best-effort — a failed
+  token pass keeps the native results).
+- **Flag triage**: confirm a finding or dismiss it as a false positive
+  (`POST /api/cases/{id}/flags/{flag_id}`); dismissed flags drop out of the
+  severity counts and sink in the list. Status is shown in the evidence report.
+
+### Security
+- Local server now **rejects cross-origin state-changing requests** and foreign
+  `Host` headers (anti-CSRF / anti-DNS-rebinding), and no longer sends a wildcard
+  `Access-Control-Allow-Origin`. Same-origin UI and the Tauri shell are
+  unaffected.
+- Front end now HTML-escapes all address interpolations (and `esc()` escapes
+  single quotes), closing a self-XSS path from a crafted imported dataset.
+
+### Fixed
+- BTC esplora import sums multiple outputs to the same address within a tx
+  (previously the duplicate collapsed on the unique key); docstring corrected to
+  the representative-input model it actually uses.
+
 ## [0.1.0] - 2026-10-30
 
 First tagged release.

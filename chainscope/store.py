@@ -304,6 +304,21 @@ def record_flags(conn, case_id, items, chain=None):
     return new, merged
 
 
+_FLAG_STATUS = {"open", "confirmed", "false_positive", "resolved"}
+
+
+def set_flag_status(conn, case_id, flag_id, status):
+    """Triage a flag: confirm it, mark it a false positive, resolve, or reopen.
+    Returns True if a matching flag was updated to a valid status."""
+    if status not in _FLAG_STATUS:
+        return False
+    cur = conn.execute(
+        "UPDATE flags SET status=? WHERE case_id=? AND id=?",
+        (status, case_id, flag_id))
+    conn.commit()
+    return cur.rowcount > 0
+
+
 def list_flags(conn, case_id, chain=None):
     """Flags for a case, optionally restricted to one chain. Rows with a NULL
     chain (pre-migration) are always included so nothing silently disappears."""

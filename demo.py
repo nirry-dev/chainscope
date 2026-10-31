@@ -165,6 +165,21 @@ def main():
     f_usdc = analyze.transfers_feed(conn, cid2, "eth", asset="USDC", min_value=1000000)
     print(f"   USDC >= 1M: {f_usdc['total']} transfer(s)")
 
+    hr("18. Flag triage (confirm / dismiss a finding)")
+    flags = store.list_flags(conn, cid2, "eth")
+    openc = sum(1 for f in flags if (f.get("status") or "open") == "open")
+    print(f"   {len(flags)} flags, {openc} open")
+    fp = flags[0]
+    store.set_flag_status(conn, cid2, fp["id"], "false_positive")
+    store.set_flag_status(conn, cid2, flags[1]["id"], "confirmed")
+    flags2 = store.list_flags(conn, cid2, "eth")
+    by_status = {}
+    for f in flags2:
+        by_status[f.get("status") or "open"] = by_status.get(f.get("status") or "open", 0) + 1
+    print(f"   after triage: " + ", ".join(f"{k} {v}" for k, v in sorted(by_status.items())))
+    store.set_flag_status(conn, cid2, fp["id"], "open")  # reopen the dismissed one
+    print(f"   reopened flag #{fp['id']}: {fp['title'][:48]}")
+
     print("\nOK - chainscope works end to end, offline.")
 
 

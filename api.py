@@ -25,6 +25,11 @@ _CTYPES = {".html": "text/html; charset=utf-8", ".js": "application/javascript",
            ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml",
            ".png": "image/png", ".ico": "image/x-icon", ".map": "application/json"}
 
+# Hosts we will serve. Everything else is refused, which defeats DNS-rebinding
+# (an attacker domain pointed at 127.0.0.1 still sends its own Host header).
+# "tauri.localhost" is the desktop webview's host when it calls the engine.
+_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "tauri.localhost", ""}
+
 
 def case_summary(conn, case_id):
     c = db.get_case(conn, case_id)
@@ -41,10 +46,39 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "chainscope/0.1"
 
     # --- plumbing ---------------------------------------------------------
+    def _req_host(self):
+        h = self.headers.get("Host", "")
+        return h.rsplit(":", 1)[0].strip("[]") if h else ""
+
+    def _host_ok(self):
+        """Serve only local hosts — the anti-DNS-rebinding gate."""
+        return self._req_host() in _LOCAL_HOSTS
+
+    def _origin_allowed(self):
+        """True when the request's Origin is same-origin, a loopback host, or
+        the Tauri desktop shell. A missing Origin header is not a cross-site
+        browser request (curl / same-origin navigation), so it is allowed.
+        A foreign Origin (e.g. https://evil.example) is refused — this is the
+        CSRF gate for state-changing POSTs."""
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True
+        if origin == "tauri://localhost":
+            return True
+        o = urlparse(origin)
+        if o.netloc == self.headers.get("Host", ""):
+            return True
+        return (o.hostname or "") in _LOCAL_HOSTS
+
     def _cors(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        # Echo the specific allowed Origin (never a wildcard), so a foreign site
+        # can neither read responses nor be told cross-origin calls are allowed.
+        origin = self.headers.get("Origin")
+        if origin and self._origin_allowed():
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 
     def _json(self, code, payload):
         body = json.dumps(payload).encode("utf-8")
@@ -72,6 +106,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
+            if not self._host_ok():
+                return self._json(403, {"error": "forbidden host"})
             if urlparse(self.path).path.startswith("/api/"):
                 return self.api("GET")
             return self.static()
@@ -80,6 +116,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
+            if not self._host_ok():
+                return self._json(403, {"error": "forbidden host"})
+            if not self._origin_allowed():
+                return self._json(403, {"error": "cross-origin request blocked"})
             return self.api("POST")
         except Exception as e:
             self._json(500, {"error": str(e)})
@@ -257,6 +297,16 @@ class Handler(BaseHTTPRequestHandler):
             if sub == ["flags"]:
                 return self._json(200, {"flags": store.list_flags(
                     conn, cid, chain=q.get("chain", [None])[0] or None)})
+
+            if len(sub) == 2 and sub[0] == "flags":   # POST triage: set flag status
+                try:
+                    fid = int(sub[1])
+                except ValueError:
+                    return self._json(400, {"error": "bad flag id"})
+                status = (self._body().get("status") or "").strip()
+                if store.set_flag_status(conn, cid, fid, status):
+                    return self._json(200, {"ok": True})
+                return self._json(400, {"error": "unknown status or flag"})
 
             if sub == ["report"]:
                 fmt = q.get("format", ["md"])[0]

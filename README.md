@@ -57,6 +57,8 @@ third-party packages, no build step. Runs offline out of the box.
   wallet (label, entity, category, risk, tags, notes).
 - **Risk engine** — flags laundering signals (outflow to a mixer/sanctioned
   address) and tainted inflows, with stable de-duplication across re-scans.
+  Each flag can be **triaged** — confirmed or dismissed as a false positive
+  (dismissed flags drop out of the severity counts).
 - **Multi-asset / ERC-20** — per-asset flows, holdings, and a **token
   dashboard** (top holders, top receivers/senders, net exchange flow).
 - **USD valuation** — an optional per-case price snapshot values holdings and
@@ -152,11 +154,13 @@ real address's recent transactions from a public explorer:
 - **Bitcoin** — keyless, via a Blockstream/esplora REST endpoint. Verified
   against live mainnet.
 - **EVM** — via an Etherscan-compatible endpoint; requires an API base URL and
-  key you supply.
+  key you supply. Pulls **both native ETH and ERC-20 token transfers** (valued
+  per each token's own decimals and symbol), merged into one dataset.
 
 Live import is best-effort and depends on network egress. It only reads public
-data. BTC values use the "all inputs fund all outputs" heuristic and record
-common-input sets for clustering.
+data. BTC edges run from a representative input (the first input address) to
+each output, and the full input set is recorded as a common-input group for
+clustering.
 
 ## Dataset format
 

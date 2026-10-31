@@ -147,11 +147,11 @@ def fetch_esplora(address, base="https://blockstream.info/api", max_txs=50):
     REST endpoint (keyless). Returns the normalized dataset. BTC values are in
     satoshis on the wire; converted to BTC here.
 
-    Each tx is reduced to edges: every input address funds every output address
-    it is not also an input of, weighted by the output value — the simple "all
-    inputs fund all outputs" heuristic esplora-based tracers use. The input set
-    of each tx is also recorded as a co-spend group (common-input ownership) to
-    feed address clustering."""
+    Each tx is reduced to edges from a representative input (the first input
+    address) to every output address that is not itself one of the inputs,
+    weighted by the output value; multiple outputs to the same address within a
+    tx are summed. The full input set is recorded as a co-spend group
+    (common-input ownership) to feed address clustering."""
     SAT = 1e8
     address = validate_address(address, "btc")
     base = (base or "https://blockstream.info/api").rstrip("/")
@@ -193,14 +193,17 @@ def fetch_esplora(address, base="https://blockstream.info/api", max_txs=50):
         in_set = set(ins)
         if len(in_set) >= 2:
             cospends.append(sorted(in_set))   # common-input ownership heuristic
+        src = ins[0] if ins else "coinbase"
+        out_val = {}                          # sum outputs sharing a destination
         for vout in tx.get("vout", []):
             dst = vout.get("scriptpubkey_address")
             if not dst or dst in in_set:
                 continue  # skip change back to an input
-            val = vout.get("value", 0) / SAT
-            src = ins[0] if ins else "coinbase"
+            out_val[dst] = out_val.get(dst, 0) + (vout.get("value", 0) or 0)
+        for dst, sats in out_val.items():
             transfers.append({"txid": txid, "src": src, "dst": dst,
-                              "value": val, "asset": "BTC", "ts": iso, "block": block})
+                              "value": sats / SAT, "asset": "BTC",
+                              "ts": iso, "block": block})
 
     return normalize_dataset({
         "chain": "btc", "asset": "BTC",
@@ -210,9 +213,22 @@ def fetch_esplora(address, base="https://blockstream.info/api", max_txs=50):
     })
 
 
+def _evm_ts(ts):
+    try:
+        return (datetime.fromtimestamp(int(ts), timezone.utc).isoformat()
+                if ts else None)
+    except (TypeError, ValueError):
+        return None
+
+
 def fetch_evm(address, api_base, api_key, max_txs=50):
-    """Pull an EVM address's native-value transfers from an Etherscan-compatible
-    explorer (module=account&action=txlist). Requires an API base + key."""
+    """Pull an EVM address's transfers from an Etherscan-compatible explorer.
+
+    Fetches BOTH native-value transfers (action=txlist, valued in ETH) and
+    ERC-20 token transfers (action=tokentx, valued per the token's own decimals
+    and symbol), merged into one normalized dataset. Requires an API base + key.
+    The token pass is best-effort: if that endpoint errors or is rate-limited,
+    the native results are still returned."""
     WEI = 1e18
     address = validate_address(address, "eth")
     api_base = (api_base or "").strip().rstrip("/")
@@ -221,35 +237,54 @@ def fetch_evm(address, api_base, api_key, max_txs=50):
     if not (api_key or "").strip():
         raise ValueError("EVM explorer API key is required")
     max_txs = _clamp_txs(max_txs, hard=1000)
-    url = (f"{api_base}?module=account&action=txlist&address={address}"
-           f"&startblock=0&endblock=99999999&sort=desc&page=1&offset={max_txs}"
-           f"&apikey={api_key.strip()}")
-    data = _get_json(url)
-    if isinstance(data, dict) and str(data.get("status")) == "0":
-        # Etherscan reports errors/empty with status "0"; "No transactions found"
-        # is benign, anything else (rate limit, bad key) should surface.
-        msg = (data.get("message") or "").strip()
-        res = data.get("result")
-        if "No transactions found" not in msg and not isinstance(res, list):
-            raise ValueError(f"explorer error: {msg or res or 'rejected request'}")
-    rows = data.get("result", []) if isinstance(data, dict) else []
-    if not isinstance(rows, list):
-        raise ValueError(f"explorer error: {rows}")
+    key = api_key.strip()
+
+    def _rows(action):
+        url = (f"{api_base}?module=account&action={action}&address={address}"
+               f"&startblock=0&endblock=99999999&sort=desc&page=1&offset={max_txs}"
+               f"&apikey={key}")
+        data = _get_json(url)
+        if isinstance(data, dict) and str(data.get("status")) == "0":
+            # Etherscan reports errors/empty with status "0"; "No transactions
+            # found" is benign, anything else (rate limit, bad key) should surface.
+            msg = (data.get("message") or "").strip()
+            res = data.get("result")
+            if "No transactions found" not in msg and not isinstance(res, list):
+                raise ValueError(f"explorer error: {msg or res or 'rejected request'}")
+        rows = data.get("result", []) if isinstance(data, dict) else []
+        if not isinstance(rows, list):
+            raise ValueError(f"explorer error: {rows}")
+        return rows
+
     transfers = []
-    for tx in rows:
+    for tx in _rows("txlist"):            # native ETH
         try:
             val = int(tx.get("value", "0")) / WEI
         except (TypeError, ValueError):
             val = 0.0
-        ts = tx.get("timeStamp")
-        try:
-            iso = (datetime.fromtimestamp(int(ts), timezone.utc).isoformat()
-                   if ts else None)
-        except (TypeError, ValueError):
-            iso = None
         transfers.append({"txid": tx.get("hash"), "src": tx.get("from"),
                           "dst": tx.get("to"), "value": val, "asset": "ETH",
-                          "ts": iso, "block": tx.get("blockNumber")})
+                          "ts": _evm_ts(tx.get("timeStamp")),
+                          "block": tx.get("blockNumber")})
+
+    try:                                  # ERC-20 tokens (best-effort)
+        for tx in _rows("tokentx"):
+            try:
+                dec = int(tx.get("tokenDecimal") or 18)
+            except (TypeError, ValueError):
+                dec = 18
+            try:
+                val = int(tx.get("value", "0")) / (10 ** dec)
+            except (TypeError, ValueError):
+                val = 0.0
+            sym = (tx.get("tokenSymbol") or "").strip() or "TOKEN"
+            transfers.append({"txid": tx.get("hash"), "src": tx.get("from"),
+                              "dst": tx.get("to"), "value": val, "asset": sym,
+                              "ts": _evm_ts(tx.get("timeStamp")),
+                              "block": tx.get("blockNumber")})
+    except ValueError:
+        pass  # token endpoint unavailable / rate-limited — keep native results
+
     return normalize_dataset({
         "chain": "eth", "asset": "ETH",
         "addresses": [{"address": address, "seed": True}],

@@ -229,6 +229,18 @@ button:active { transform: translateY(1px); }
 .flag .sev-pill { text-transform: uppercase; letter-spacing: .5px; font-size: 10px; font-weight: 700;
   padding: 1px 7px; border-radius: 20px; color: #0a0e16; background: var(--c); }
 .hint.empty-flags { text-align: center; padding: 6px 0; }
+.flag.dismissed { opacity: .5; }
+.flag.dismissed .ft { text-decoration: line-through; }
+.flag .fm .flag-st { text-transform: uppercase; letter-spacing: .4px; font-size: 9.5px; font-weight: 700;
+  padding: 1px 6px; border-radius: 20px; border: 1px solid var(--line-2); color: var(--muted); }
+.flag .fm .flag-st.confirmed { color: var(--bad); border-color: var(--bad); }
+.flag-actions { margin-left: auto; display: inline-flex; gap: 4px; }
+.flag-btn { background: var(--panel-2); border: 1px solid var(--line-2); color: var(--muted);
+  width: 20px; height: 20px; border-radius: 5px; cursor: pointer; font-size: 11px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; transition: all .12s; }
+.flag-btn:hover { color: var(--txt); border-color: var(--accent); background: var(--panel-3); }
+.flag-btn.ok:hover { color: var(--accent); border-color: var(--accent); }
+.flag-btn.no:hover { color: var(--bad); border-color: var(--bad); }
 
 /* ---------- inspector ---------- */
 .inspector { width: 348px; flex-shrink: 0; padding: 16px; overflow-y: auto;
