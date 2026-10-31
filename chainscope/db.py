@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS flags (
     id          INTEGER PRIMARY KEY,
     case_id     INTEGER NOT NULL,
     dedup_key   TEXT NOT NULL,
+    chain       TEXT,                           -- which chain this finding is on
     title       TEXT NOT NULL,
     severity    TEXT,
     score       REAL,
@@ -100,6 +101,14 @@ CREATE TABLE IF NOT EXISTS chain_cospends (
     b        TEXT NOT NULL,
     UNIQUE(case_id, chain, a, b)
 );
+
+CREATE TABLE IF NOT EXISTS chain_prices (
+    id       INTEGER PRIMARY KEY,
+    case_id  INTEGER NOT NULL,
+    asset    TEXT NOT NULL,                 -- USD price snapshot for valuation (no live feed)
+    usd      REAL NOT NULL,
+    UNIQUE(case_id, asset)
+);
 """
 
 
@@ -117,6 +126,15 @@ def _migrate(conn):
                       ("cluster", "cluster TEXT")):
         if name not in cols:
             conn.execute(f"ALTER TABLE chain_addresses ADD COLUMN {ddl}")
+    fcols = {r["name"] for r in conn.execute("PRAGMA table_info(flags)")}
+    if "chain" not in fcols:
+        conn.execute("ALTER TABLE flags ADD COLUMN chain TEXT")
+        # backfill from the dedup_key, which is `chain:<chain>:...`
+        for r in conn.execute("SELECT id, dedup_key FROM flags").fetchall():
+            parts = (r["dedup_key"] or "").split(":")
+            ch = parts[1] if len(parts) > 2 and parts[0] == "chain" else None
+            if ch:
+                conn.execute("UPDATE flags SET chain=? WHERE id=?", (ch, r["id"]))
     conn.commit()
 
 
@@ -166,7 +184,7 @@ def update_case(conn, case_id, name=None, note=None):
 def delete_case(conn, case_id):
     """Delete a case and everything scoped to it."""
     for t in ("chain_holdings", "chain_transfers", "chain_addresses", "flags",
-              "chain_cospends"):
+              "chain_cospends", "chain_prices"):
         conn.execute(f"DELETE FROM {t} WHERE case_id=?", (case_id,))
     conn.execute("DELETE FROM cases WHERE id=?", (case_id,))
     conn.commit()

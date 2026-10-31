@@ -94,12 +94,19 @@ def normalize_dataset(data):
         members = [str(m) for m in g if m]
         if len(members) >= 2:
             cospends.append(members)
+    prices = {}
+    for sym, usd in (data.get("prices") or {}).items():
+        try:
+            prices[str(sym)] = float(usd)
+        except (TypeError, ValueError):
+            continue
     return {
         "chain": chain, "asset": asset,
         "entities": [e for e in data.get("entities", []) if e.get("address")],
         "addresses": [a for a in data.get("addresses", []) if a.get("address")],
         "transfers": transfers,
         "cospends": cospends,
+        "prices": prices,
         "note": data.get("note"),
     }
 

@@ -128,6 +128,32 @@ def main():
     print(f"   markdown: {len(md)} chars / {md.count(chr(10)) + 1} lines; "
           f"mermaid diagram embedded: {'```mermaid' in md}")
 
+    hr("13. USD valuation + chain-scoped flags")
+    info = analyze.inspect(conn, cid2, "eth", ex)
+    print(f"   exploiter holdings value: ${info['usd_held']:,.0f}")
+    print(f"   prices: {info['prices']}")
+    print(f"   eth flags: {len(store.list_flags(conn, cid2, 'eth'))}  "
+          f"btc flags on this (eth) case: {len(store.list_flags(conn, cid2, 'btc'))}")
+
+    hr("14. Entity rollup dashboard")
+    ent = analyze.entity_summary(conn, cid2, "eth", analyze.cluster(conn, cid2, "eth")["clusters"][0]["id"])
+    print(f"   entity '{ent['name']}': {ent['size']} wallets, ${ent['usd_held']:,.0f} held, risk={ent['risk']}")
+    print(f"   net flows: " + ", ".join(f"{f['asset']} in {f['in']:g}/out {f['out']:g}" for f in ent["flows"]))
+    print(f"   exchange: deposited ${ent['exchange_usd']['deposited']:,.0f}")
+    print(f"   top external counterparties: " + ", ".join((c['label'] or c['address'][:10]) for c in ent["counterparties"][:3]))
+
+    hr("15. Token / asset dashboard (USDC)")
+    ad = analyze.asset_summary(conn, cid2, "eth", "USDC")
+    print(f"   USDC moved {ad['moved']:g} (${ad['moved_usd']:,.0f}) across {ad['txns']} tx")
+    print(f"   top holders: " + ", ".join(f"{(h['label'] or h['address'][:8])} {h['balance']:g}" for h in ad["holders"][:3]))
+    print(f"   top receivers: " + ", ".join(f"{(r['label'] or r['address'][:8])}" for r in ad["top_receivers"][:3]))
+    ov = analyze.asset_summary(conn, cid2, "eth")
+    print(f"   overview assets: " + ", ".join(f"{a['asset']}(${(a['moved_usd'] or 0):,.0f})" for a in ov["assets"]))
+
+    hr("16. Balance history (exploiter, USDC)")
+    bs = analyze.balance_series(conn, cid2, "eth", ex, asset="USDC")
+    print(f"   {len(bs)} points; USDC balance path: " + " -> ".join(f"{p['balance']:g}" for p in bs))
+
     print("\nOK - chainscope works end to end, offline.")
 
 

@@ -1,6 +1,7 @@
 {
   "chain": "btc",
   "asset": "BTC",
+  "prices": {"BTC": 68000},
   "note": "Synthetic Bitcoin scenario: a theft payout lands across three deposit wallets the actor controls, which are then co-spent together into one consolidation address (common-input ownership). Funds peel through a hop, split into a sanctioned mixer and a two-wallet exchange, and cash out. Demonstrates address clustering (co-spend + shared-entity) and risk flagging. All addresses are synthetic.",
   "entities": [
     {"address": "bc1qmixer000000000000000000000000000mixaa", "label": "CipherMix", "entity": "CipherMix", "category": "mixer", "risk": "sanctioned"},

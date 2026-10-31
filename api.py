@@ -224,6 +224,17 @@ class Handler(BaseHTTPRequestHandler):
                 ch = self._body().get("chain") or "eth"
                 return self._json(200, analyze.cluster(conn, cid, ch))
 
+            if sub == ["entity"]:
+                clid = q.get("cluster", [None])[0]
+                if not clid:
+                    return self._json(400, {"error": "cluster query param required"})
+                return self._json(200, analyze.entity_summary(conn, cid, chain, clid)
+                                  or {"error": "cluster not found"})
+
+            if sub == ["asset"]:
+                return self._json(200, analyze.asset_summary(
+                    conn, cid, chain, asset=q.get("asset", [None])[0] or None))
+
             if sub == ["path"]:
                 src, dst = q.get("from", [None])[0], q.get("to", [None])[0]
                 if not src or not dst:
@@ -233,7 +244,8 @@ class Handler(BaseHTTPRequestHandler):
                     directed=q.get("directed", ["1"])[0] not in ("0", "false")))
 
             if sub == ["flags"]:
-                return self._json(200, {"flags": store.list_flags(conn, cid)})
+                return self._json(200, {"flags": store.list_flags(
+                    conn, cid, chain=q.get("chain", [None])[0] or None)})
 
             if sub == ["report"]:
                 fmt = q.get("format", ["md"])[0]

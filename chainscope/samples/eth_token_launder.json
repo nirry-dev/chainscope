@@ -1,6 +1,7 @@
 {
   "chain": "eth",
   "asset": "ETH",
+  "prices": {"ETH": 3400, "USDC": 1, "USDT": 1},
   "note": "Synthetic multi-asset scenario: a lending pool is drained in USDC, part is swapped to ETH and laundered through a sanctioned mixer, USDC is layered through an intermediary into a mixer and an exchange, and a USDT slice is cashed out. Demonstrates per-asset (ERC-20) flow tracing. Only the Tornado Cash pool is a real/public address.",
   "entities": [
     {"address": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", "label": "Lumen Lending: Pool", "entity": "Lumen Lending", "category": "defi", "risk": "none"},

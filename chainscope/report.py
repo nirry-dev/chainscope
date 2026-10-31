@@ -17,13 +17,21 @@ def _is_flagged(a):
 
 
 def build_json(conn, case_id, chain="eth"):
+    from .analyze import usd_of
     case = db.get_case(conn, case_id) or {"id": case_id}
+    prices = store.prices(conn, case_id)
     addresses = store.list_addresses(conn, case_id, chain)
+    usd_held = 0.0
     for a in addresses:
         a["holdings"] = store.holdings(conn, case_id, chain, a["address"])
+        for h in a["holdings"]:
+            h["usd"] = usd_of(prices, h["asset"], h["balance"])
+            usd_held += h["usd"] or 0
     transfers = store.list_transfers(conn, case_id, chain, limit=1000000)
-    flags = store.list_flags(conn, case_id)
+    flags = store.list_flags(conn, case_id, chain)
     assets = store.assets(conn, case_id, chain)
+    for a in assets:
+        a["usd"] = usd_of(prices, a["asset"], a["total"])
     edges = store.edges_aggregated(conn, case_id, chain)
     tl = store.timeline(conn, case_id, chain)
 
@@ -41,9 +49,10 @@ def build_json(conn, case_id, chain="eth"):
             "assets": assets, "flags": len(flags), "flags_by_severity": sev_counts,
             "flagged_entities": sum(1 for a in addresses if _is_flagged(a)),
             "tainted_wallets": len(tainted), "max_taint": round(max_taint, 3),
-            "clusters": len(clusters),
+            "clusters": len(clusters), "usd_held": round(usd_held, 2),
             "window": {"start": tl["min"], "end": tl["max"]},
         },
+        "prices": prices,
         "assets": assets, "addresses": addresses, "edges": edges,
         "transactions": transfers, "flags": flags, "clusters": clusters,
     }
@@ -78,6 +87,22 @@ def _tbl(headers, rows):
     for r in rows:
         out.append("| " + " | ".join(str(c) for c in r) + " |")
     return "\n".join(out)
+
+
+def _usd(v):
+    if not v:
+        return "—"
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    if abs(n) >= 1e9:
+        return f"${n/1e9:.2f}B"
+    if abs(n) >= 1e6:
+        return f"${n/1e6:.2f}M"
+    if abs(n) >= 1e3:
+        return f"${n/1e3:.1f}k"
+    return f"${n:,.2f}"
 
 
 def _g(v):
@@ -145,10 +170,14 @@ def build_markdown(conn, case_id, chain="eth"):
     # summary
     L.append("## Summary")
     L.append("")
-    assets_str = ", ".join(f"{a['asset']} {_g(a['total'])}" for a in d["assets"]) or "—"
+    assets_str = ", ".join(
+        f"{a['asset']} {_g(a['total'])}" + (f" ({_usd(a.get('usd'))})" if a.get("usd") else "")
+        for a in d["assets"]) or "—"
     sev = s["flags_by_severity"]
     sev_str = ", ".join(f"{k} {sev[k]}" for k in _SEV_ORDER if sev.get(k)) or "none"
     L.append(f"- **Wallets:** {s['wallets']}")
+    if s.get("usd_held"):
+        L.append(f"- **Holdings value:** {_usd(s['usd_held'])} (price snapshot)")
     L.append(f"- **Transactions:** {s['transactions']}")
     L.append(f"- **Assets moved:** {assets_str}")
     L.append(f"- **Risk flags:** {s['flags']} ({sev_str})")

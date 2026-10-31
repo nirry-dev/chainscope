@@ -1,6 +1,7 @@
 {
   "chain": "eth",
   "asset": "ETH",
+  "prices": {"ETH": 3400},
   "note": "Synthetic fund-tracing scenario: a DeFi treasury is drained, funds are split across two hops, most are laundered through a sanctioned mixer, and a slice is cashed out at an exchange deposit address. All addresses except the Tornado Cash pool are fictitious and exist only to demonstrate flow tracing.",
   "entities": [
     {"address": "0x1111111111111111111111111111111111111111", "label": "Aurora Vault: Treasury", "entity": "Aurora Vault", "category": "defi", "risk": "none"},

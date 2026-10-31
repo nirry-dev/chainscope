@@ -248,6 +248,26 @@ def holdings(conn, case_id, chain, address):
     return [dict(r) for r in cur.fetchall()]
 
 
+def set_price(conn, case_id, asset, usd):
+    try:
+        usd = float(usd)
+    except (TypeError, ValueError):
+        return
+    conn.execute(
+        "INSERT INTO chain_prices (case_id, asset, usd) VALUES (?,?,?) "
+        "ON CONFLICT(case_id, asset) DO UPDATE SET usd=excluded.usd",
+        (case_id, asset, usd))
+    conn.commit()
+
+
+def prices(conn, case_id):
+    """USD price snapshot for this case: {ASSET: usd}. A static valuation input
+    (from the dataset or the analyst) — no live feed, so values are as-of the
+    snapshot, not real time."""
+    return {r["asset"]: r["usd"] for r in conn.execute(
+        "SELECT asset, usd FROM chain_prices WHERE case_id=?", (case_id,))}
+
+
 def assets(conn, case_id, chain):
     """Distinct assets seen in this case (from transfers), with transfer count
     and total moved — drives the UI asset selector."""
@@ -260,7 +280,7 @@ def assets(conn, case_id, chain):
 
 # --- flags (risk findings) ----------------------------------------------
 
-def record_flags(conn, case_id, items):
+def record_flags(conn, case_id, items, chain=None):
     """Insert/update risk flags. Each item carries a stable dedup_key so a
     re-scan merges instead of duplicating. Returns (new, merged)."""
     new, merged = 0, 0
@@ -272,20 +292,28 @@ def record_flags(conn, case_id, items):
             merged += 1
             continue
         conn.execute(
-            "INSERT INTO flags (case_id, dedup_key, title, severity, score, "
+            "INSERT INTO flags (case_id, dedup_key, chain, title, severity, score, "
             "category, technique, description, remediation, status, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (case_id, it["dedup_key"], it["title"], it.get("severity"),
-             it.get("score"), it.get("category", "chain"), it.get("technique"),
-             it.get("description"), it.get("remediation"), "open", now()))
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (case_id, it["dedup_key"], it.get("chain", chain), it["title"],
+             it.get("severity"), it.get("score"), it.get("category", "chain"),
+             it.get("technique"), it.get("description"), it.get("remediation"),
+             "open", now()))
         new += 1
     conn.commit()
     return new, merged
 
 
-def list_flags(conn, case_id):
-    cur = conn.execute(
-        "SELECT * FROM flags WHERE case_id=? ORDER BY score DESC, id", (case_id,))
+def list_flags(conn, case_id, chain=None):
+    """Flags for a case, optionally restricted to one chain. Rows with a NULL
+    chain (pre-migration) are always included so nothing silently disappears."""
+    if chain:
+        cur = conn.execute(
+            "SELECT * FROM flags WHERE case_id=? AND (chain=? OR chain IS NULL) "
+            "ORDER BY score DESC, id", (case_id, chain))
+    else:
+        cur = conn.execute(
+            "SELECT * FROM flags WHERE case_id=? ORDER BY score DESC, id", (case_id,))
     return [dict(r) for r in cur.fetchall()]
 
 

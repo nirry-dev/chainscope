@@ -392,7 +392,7 @@ function renderClusterList(res) {
       <span class="cl-size">${c.size}</span>
       ${c.risk && c.risk !== "none" ? `<span class="badge risk-${c.risk}">${c.risk}</span>` : ""}
     </div>`).join("");
-  box.querySelectorAll(".cl-item").forEach(it => it.onclick = () => focusCluster(JSON.parse(it.dataset.addrs)));
+  box.querySelectorAll(".cl-item").forEach(it => it.onclick = () => { focusCluster(JSON.parse(it.dataset.addrs)); openEntity(it.dataset.cid); });
 }
 function focusCluster(addrs) {
   const ns = addrs.map(a => nodeById[a]).filter(Boolean);
@@ -404,6 +404,104 @@ function focusCluster(addrs) {
   view.x = W / 2 - ((minx + maxx) / 2) * view.k;
   view.y = H / 2 - ((miny + maxy) / 2) * view.k;
   draw();
+}
+
+// ---------- entity & token dashboards ----------
+async function openEntity(cid) {
+  try {
+    const e = await api(`/api/cases/${currentCase}/entity?chain=${chain}&cluster=${encodeURIComponent(cid)}`);
+    if (e.error) return toast(e.error);
+    renderEntity(e);
+  } catch (err) { toast("entity failed: " + err.message); }
+}
+async function openAssetDash() {
+  try {
+    const d = await api(`/api/cases/${currentCase}/asset?chain=${chain}&asset=${encodeURIComponent(asset)}`);
+    renderAssetDash(d);
+  } catch (err) { toast("asset dashboard failed: " + err.message); }
+}
+function wireAddrClicks(box) {
+  box.querySelectorAll(".cp-addr, .ent-mem, .asset-row").forEach(x => x.onclick = () => {
+    if (x.dataset.s != null) { asset = x.dataset.s; document.getElementById("assetSelect").value = asset; refreshAll().then(openAssetDash); return; }
+    selectNode(x.dataset.a); const n = nodeById[x.dataset.a]; if (n) centerOn(n);
+  });
+}
+function renderEntity(e) {
+  const box = document.getElementById("inspector");
+  box.className = "inspector insp";
+  const holdRows = (e.holdings || []).map(h => `<tr><td><b>${esc(h.asset)}</b></td><td class="num">${fmt(h.balance)}</td><td class="num muted-usd">${h.usd != null ? usd(h.usd) : ""}</td></tr>`).join("");
+  const flowRows = (e.flows || []).map(f => `<tr><td><b>${esc(f.asset)}</b></td><td class="num recv">${f.in ? "+" + fmt(f.in) : ""}</td><td class="num sent">${f.out ? "−" + fmt(f.out) : ""}</td></tr>`).join("");
+  const cps = (e.counterparties || []).map(c => {
+    const cc = (c.risk === "sanctioned" || FLAGGED.has(c.category)) ? CAT_COLOR.mixer : (CAT_COLOR[c.category] || CAT_COLOR.unknown);
+    const chips = (c.assets || []).map(x => `<span class="cp-as ${x.net >= 0 ? "pos" : "neg"}">${esc(x.asset)} ${x.net >= 0 ? "+" : "−"}${fmt(Math.abs(x.net))}</span>`).join("");
+    return `<tr><td><span class="cp-addr" data-a="${c.address}"><span class="cp-dot" style="background:${cc}"></span><span class="cp-name">${c.label ? esc(c.label) : short(c.address)}</span></span>${c.risk && c.risk !== "none" ? `<span class="badge risk-${c.risk}">${c.risk}</span>` : ""}<div class="cp-assets">${chips}</div></td></tr>`;
+  }).join("");
+  const members = (e.members || []).map(m => {
+    const cc = (m.risk === "sanctioned" || FLAGGED.has(m.category)) ? CAT_COLOR.mixer : (CAT_COLOR[m.category] || CAT_COLOR.unknown);
+    return `<div class="ent-mem" data-a="${m.address}"><span class="cp-dot" style="background:${cc}"></span><span class="cp-name">${m.label ? esc(m.label) : short(m.address)}</span><span class="ent-tx">${m.tx_count || 0} tx</span></div>`;
+  }).join("");
+  box.innerHTML = `
+    <div class="insp-head">
+      <div class="monogram" style="background:${clusterCss(e.id)}">${esc(e.id)}</div>
+      <div class="insp-title"><div class="insp-label">${esc(e.name)}</div>
+        <div class="insp-sub">entity · ${e.size} wallets</div></div>
+    </div>
+    <div class="badges">
+      ${e.risk && e.risk !== "none" ? `<span class="badge risk-${e.risk}">risk: ${e.risk}</span>` : ""}
+      ${e.flagged_members ? `<span class="badge risk-high">${e.flagged_members} flagged</span>` : ""}
+      ${e.max_taint >= 0.15 ? `<span class="badge taint">taint ${Math.round(e.max_taint * 100)}%</span>` : ""}
+    </div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="v">${usd(e.usd_held)}</div><div class="k">holdings</div></div>
+      <div class="kpi"><div class="v">${usd(e.exchange_usd.deposited)}</div><div class="k">to exch</div></div>
+      <div class="kpi"><div class="v">${e.size}</div><div class="k">wallets</div></div>
+    </div>
+    <h4>Combined holdings</h4>
+    <table class="cp-tbl"><thead><tr><th>asset</th><th class="num">amount</th><th class="num">value</th></tr></thead><tbody>${holdRows || '<tr><td colspan="3" class="hint">none</td></tr>'}</tbody></table>
+    <h4>Net external flows</h4>
+    <table class="cp-tbl"><thead><tr><th>asset</th><th class="num">in</th><th class="num">out</th></tr></thead><tbody>${flowRows || '<tr><td colspan="3" class="hint">none</td></tr>'}</tbody></table>
+    <h4>Top counterparties</h4>
+    <table class="cp-tbl"><tbody>${cps || '<tr><td class="hint">none</td></tr>'}</tbody></table>
+    <h4>Member wallets</h4>
+    <div class="ent-members">${members}</div>`;
+  wireAddrClicks(box);
+}
+function rowAddr(h) {
+  const cc = (h.risk === "sanctioned" || FLAGGED.has(h.category)) ? CAT_COLOR.mixer : (CAT_COLOR[h.category] || CAT_COLOR.unknown);
+  const amt = h.balance != null ? fmt(h.balance) : fmt(h.value);
+  return `<tr><td><span class="cp-addr" data-a="${h.address}"><span class="cp-dot" style="background:${cc}"></span><span class="cp-name">${h.label ? esc(h.label) : short(h.address)}</span></span></td><td class="num">${amt}</td><td class="num muted-usd">${h.usd != null ? usd(h.usd) : ""}</td></tr>`;
+}
+function renderAssetDash(d) {
+  const box = document.getElementById("inspector");
+  box.className = "inspector insp";
+  if (d.overview) {
+    const rows = (d.assets || []).map(a => `<tr class="asset-row" data-s="${esc(a.asset)}"><td><b>${esc(a.asset)}</b></td><td class="num">${fmt(a.moved)}</td><td class="num muted-usd">${a.moved_usd != null ? usd(a.moved_usd) : ""}</td><td class="num">${a.holders}</td></tr>`).join("");
+    box.innerHTML = `<div class="insp-head"><div class="monogram" style="background:#1f6feb">Σ</div><div class="insp-title"><div class="insp-label">Assets</div><div class="insp-sub">${(d.assets || []).length} tokens in case</div></div></div>
+      <p class="hint">Click an asset for its holders &amp; flows.</p>
+      <table class="cp-tbl"><thead><tr><th>asset</th><th class="num">moved</th><th class="num">value</th><th class="num">holders</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="hint">none</td></tr>'}</tbody></table>`;
+    wireAddrClicks(box);
+    return;
+  }
+  const ef = d.exchange_flow || { in: 0, out: 0 };
+  box.innerHTML = `
+    <div class="insp-head"><div class="monogram" style="background:#1f6feb">${esc(d.asset.slice(0, 3))}</div>
+      <div class="insp-title"><div class="insp-label">${esc(d.asset)}</div><div class="insp-sub">${d.price ? usd(d.price) + " · " : ""}token dashboard</div></div></div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="v">${fmt(d.moved)}</div><div class="k">moved</div></div>
+      <div class="kpi"><div class="v">${usd(d.moved_usd)}</div><div class="k">value</div></div>
+      <div class="kpi"><div class="v">${d.txns}</div><div class="k">txns</div></div>
+    </div>
+    <h4>Exchange flow</h4>
+    <table class="cp-tbl"><tbody>
+      <tr><td>into exchanges</td><td class="num recv">${fmt(ef.in)}</td><td class="num muted-usd">${ef.in_usd != null ? usd(ef.in_usd) : ""}</td></tr>
+      <tr><td>out of exchanges</td><td class="num sent">${fmt(ef.out)}</td><td class="num muted-usd">${ef.out_usd != null ? usd(ef.out_usd) : ""}</td></tr></tbody></table>
+    <h4>Top holders</h4>
+    <table class="cp-tbl"><tbody>${(d.holders || []).map(rowAddr).join("") || '<tr><td class="hint">none</td></tr>'}</tbody></table>
+    <h4>Top receivers</h4>
+    <table class="cp-tbl"><tbody>${(d.top_receivers || []).map(rowAddr).join("") || '<tr><td class="hint">none</td></tr>'}</tbody></table>
+    <h4>Top senders</h4>
+    <table class="cp-tbl"><tbody>${(d.top_senders || []).map(rowAddr).join("") || '<tr><td class="hint">none</td></tr>'}</tbody></table>`;
+  wireAddrClicks(box);
 }
 
 // ---------- interaction ----------
@@ -530,15 +628,19 @@ function renderInspector(a) {
   }).join("");
   // merge per-asset holdings + in/out flows into one table
   const am = {};
-  (a.holdings || []).forEach(h => (am[h.asset] = am[h.asset] || {}).held = h.balance);
+  (a.holdings || []).forEach(h => { const o = am[h.asset] = am[h.asset] || {}; o.held = h.balance; o.heldUsd = h.usd; });
   (a.by_asset || []).forEach(b => { const o = am[b.asset] = am[b.asset] || {}; o.recv = b.recv; o.sent = b.sent; });
   const assetRows = Object.keys(am).sort().map(sym => {
     const v = am[sym];
     return `<tr><td><b>${esc(sym)}</b></td>
       <td class="num">${v.held != null ? fmt(v.held) : "—"}</td>
+      <td class="num muted-usd">${v.heldUsd != null ? usd(v.heldUsd) : ""}</td>
       <td class="num recv">${v.recv ? "+" + fmt(v.recv) : ""}</td>
       <td class="num sent">${v.sent ? "−" + fmt(v.sent) : ""}</td></tr>`;
   }).join("");
+  const sparkAsset = asset || a.asset || "";
+  const sparkSection = (a.balance_series && a.balance_series.length > 1)
+    ? `<h4>Balance history${sparkAsset ? " · " + esc(sparkAsset) : ""}</h4>${sparkline(a.balance_series)}` : "";
 
   box.className = "inspector insp";
   box.innerHTML = `
@@ -556,12 +658,14 @@ function renderInspector(a) {
     <div class="badges">${badges.join("")}</div>
     <div class="kpi-row">
       <div class="kpi"><div class="v">${fmt(a.balance)}</div><div class="k">balance</div></div>
+      ${a.usd_held ? `<div class="kpi"><div class="v">${usd(a.usd_held)}</div><div class="k">value</div></div>` : ""}
       <div class="kpi"><div class="v">${m.tx_count ?? a.tx_count ?? 0}</div><div class="k">txns</div></div>
       <div class="kpi"><div class="v">${m.counterparties || 0}</div><div class="k">peers</div></div>
     </div>
+    ${sparkSection}
     <h4>Assets held &amp; moved</h4>
-    <table class="cp-tbl"><thead><tr><th>asset</th><th class="num">held</th><th class="num">in</th><th class="num">out</th></tr></thead>
-      <tbody>${assetRows || '<tr><td colspan="4" class="hint">none</td></tr>'}</tbody></table>
+    <table class="cp-tbl"><thead><tr><th>asset</th><th class="num">held</th><th class="num">value</th><th class="num">in</th><th class="num">out</th></tr></thead>
+      <tbody>${assetRows || '<tr><td colspan="5" class="hint">none</td></tr>'}</tbody></table>
     <h4>Counterparties</h4>
     <table class="cp-tbl"><thead><tr><th>address</th><th class="num">in</th><th class="num">out</th></tr></thead>
       <tbody>${cps || '<tr><td colspan="3" class="hint">none</td></tr>'}</tbody></table>
@@ -613,7 +717,7 @@ async function saveAnnotation(address) {
 }
 
 async function loadFlags() {
-  const { flags } = await api(`/api/cases/${currentCase}/flags`);
+  const { flags } = await api(`/api/cases/${currentCase}/flags?chain=${chain}`);
   const sum = document.getElementById("riskSummary");
   const box = document.getElementById("flagsList");
   const counts = {};
@@ -771,6 +875,7 @@ function wire() {
   });
   document.getElementById("chainSelect").onchange = async (e) => { chain = e.target.value; asset = ""; await refreshAll(); setTimeout(fit, 450); };
   document.getElementById("assetSelect").onchange = async (e) => { asset = e.target.value; await refreshAll(); setTimeout(fit, 450); };
+  document.getElementById("assetDashBtn").onclick = openAssetDash;
   document.getElementById("loadSampleBtn").onclick = loadSample;
   document.getElementById("liveSource").onchange = (e) => {
     const evm = e.target.value === "evm";
@@ -828,6 +933,19 @@ function short(a) { return a && a.length > 15 ? a.slice(0, 7) + "…" + a.slice(
 function fmt(v) { if (v == null) return "—"; const n = +v; if (!isFinite(n)) return "—";
   if (n >= 1e6) return (n / 1e6).toFixed(2) + "M"; if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
   return (Math.round(n * 1000) / 1000).toString(); }
+function usd(v) { if (v == null || v === "" || !isFinite(+v)) return "—"; const n = +v, s = n < 0 ? "−" : "", a = Math.abs(n);
+  if (a >= 1e9) return s + "$" + (a / 1e9).toFixed(2) + "B"; if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(2) + "M";
+  if (a >= 1e3) return s + "$" + (a / 1e3).toFixed(1) + "k"; return s + "$" + a.toFixed(2); }
+function sparkline(series, w = 236, h = 42) {
+  if (!series || series.length < 2) return `<div class="hint">not enough history</div>`;
+  const vals = series.map(p => p.balance); let mn = Math.min(0, ...vals), mx = Math.max(0, ...vals);
+  if (mx === mn) mx = mn + 1; const n = series.length;
+  const X = i => (i / (n - 1)) * (w - 4) + 2, Y = v => h - 3 - ((v - mn) / (mx - mn)) * (h - 6);
+  const pts = series.map((p, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(p.balance).toFixed(1)}`).join(" ");
+  const area = `M${X(0).toFixed(1)},${(h - 3).toFixed(1)} ` + series.map((p, i) => `L${X(i).toFixed(1)},${Y(p.balance).toFixed(1)}`).join(" ") + ` L${X(n - 1).toFixed(1)},${(h - 3).toFixed(1)} Z`;
+  const zero = (mn < 0 && mx > 0) ? `<line class="spark-zero" x1="2" y1="${Y(0).toFixed(1)}" x2="${w - 2}" y2="${Y(0).toFixed(1)}"/>` : "";
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${zero}<path class="spark-area" d="${area}"/><path class="spark-line" d="${pts}"/></svg>`;
+}
 function esc(s) { return (s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
 wire();
