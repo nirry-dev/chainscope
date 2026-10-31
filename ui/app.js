@@ -504,6 +504,71 @@ function renderAssetDash(d) {
   wireAddrClicks(box);
 }
 
+// ---------- transfers feed (transaction list) ----------
+let feedAddr = null, feedTimer = null;
+function openFeed(address) {
+  feedAddr = address || null;
+  document.getElementById("feed").classList.remove("hidden");
+  document.getElementById("timeline").classList.add("under-feed");
+  // direction filter only makes sense scoped to one wallet
+  document.getElementById("feedDir").style.display = feedAddr ? "" : "none";
+  if (!feedAddr) document.getElementById("feedDir").value = "all";
+  loadFeed();
+}
+function closeFeed() {
+  document.getElementById("feed").classList.add("hidden");
+  document.getElementById("timeline").classList.remove("under-feed");
+}
+async function loadFeed() {
+  const dir = document.getElementById("feedDir").value;
+  const min = document.getElementById("feedMin").value.trim();
+  const q = document.getElementById("feedSearch").value.trim();
+  const sort = document.getElementById("feedSort").value;
+  const params = new URLSearchParams({ chain, sort, direction: dir });
+  if (asset) params.set("asset", asset);
+  if (feedAddr) params.set("address", feedAddr);
+  if (min && +min > 0) params.set("min", min);
+  if (q) params.set("q", q);
+  try {
+    const d = await api(`/api/cases/${currentCase}/transfers?${params}`);
+    renderFeed(d);
+  } catch (e) { toast("feed failed: " + e.message); }
+}
+function feedCell(side) {
+  const col = (side.risk === "sanctioned" || FLAGGED.has(side.category)) ? CAT_COLOR.mixer : (CAT_COLOR[side.category] || CAT_COLOR.unknown);
+  return `<span class="cp-addr" data-a="${side.address}"><span class="cp-dot" style="background:${col}"></span><span class="cp-name">${side.label ? esc(side.label) : short(side.address)}</span></span>`;
+}
+function renderFeed(d) {
+  const scoped = !!d.address;
+  const sideLabel = scoped ? (nodeById[d.address]?.label || short(d.address)) : null;
+  document.getElementById("feedTitle").textContent = scoped ? `${sideLabel} · transfers` : "All transfers";
+  document.getElementById("feedCount").textContent = `${d.count}${d.total > d.count ? " of " + d.total : ""}`;
+  const head = scoped
+    ? `<th>time</th><th></th><th>counterparty</th><th>asset</th><th class="num">amount</th><th class="num">USD</th>`
+    : `<th>time</th><th>from</th><th>to</th><th>asset</th><th class="num">amount</th><th class="num">USD</th>`;
+  const rows = (d.transfers || []).map(t => {
+    const usdc = t.usd != null ? usd(t.usd) : "";
+    const flagged = (t.dst.risk === "sanctioned" || FLAGGED.has(t.dst.category));
+    if (scoped) {
+      const inn = t.direction === "in";
+      return `<tr class="${flagged ? "fx-flagged" : ""}"><td class="fx-ts">${fmtTs(t.ts)}</td>
+        <td class="fx-dir ${inn ? "in" : "out"}">${inn ? "in ←" : "out →"}</td>
+        <td>${feedCell(t.counterparty)}</td><td class="fx-asset">${esc(t.asset || "")}</td>
+        <td class="num ${inn ? "recv" : "sent"}">${inn ? "+" : "−"}${fmt(t.value)}</td>
+        <td class="num muted-usd">${usdc}</td></tr>`;
+    }
+    return `<tr class="${flagged ? "fx-flagged" : ""}"><td class="fx-ts">${fmtTs(t.ts)}</td>
+      <td>${feedCell(t.src)}</td><td>${feedCell(t.dst)}</td><td class="fx-asset">${esc(t.asset || "")}</td>
+      <td class="num">${fmt(t.value)}</td><td class="num muted-usd">${usdc}</td></tr>`;
+  }).join("");
+  document.getElementById("feedRows").innerHTML =
+    `<tr class="fx-head">${head}</tr>${rows || '<tr><td colspan="6" class="hint">no transfers match</td></tr>'}`;
+  document.querySelectorAll("#feedRows .cp-addr").forEach(x => x.onclick = () => {
+    selectNode(x.dataset.a); const n = nodeById[x.dataset.a]; if (n) centerOn(n);
+  });
+}
+function fmtTs(ts) { return ts ? String(ts).replace("T", " ").replace(/:\d\d(\.\d+)?Z?$/, "").replace("Z", "") : "—"; }
+
 // ---------- interaction ----------
 let drag = null, pan = null;
 const tip = document.getElementById("tooltip");
@@ -670,6 +735,7 @@ function renderInspector(a) {
     <table class="cp-tbl"><thead><tr><th>address</th><th class="num">in</th><th class="num">out</th></tr></thead>
       <tbody>${cps || '<tr><td colspan="3" class="hint">none</td></tr>'}</tbody></table>
     <button id="traceFromBtn" class="btn primary full" style="margin-top:14px">Trace from this wallet →</button>
+    <button id="walletFeedBtn" class="btn ghost full mt">View transfers ☰</button>
     <div class="insp-actions">
       <button id="setABtn" class="btn ghost grow" title="Use as path start">Path A ↦</button>
       <button id="setBBtn" class="btn ghost grow" title="Use as path end">↦ Path B</button>
@@ -692,6 +758,7 @@ function renderInspector(a) {
   const cp = box.querySelector(".copy");
   cp.onclick = () => { navigator.clipboard?.writeText(cp.dataset.copy); toast("address copied"); };
   document.getElementById("traceFromBtn").onclick = () => { document.getElementById("seedAddr").value = a.address; doTrace(); };
+  document.getElementById("walletFeedBtn").onclick = () => openFeed(a.address);
   document.getElementById("setABtn").onclick = () => { document.getElementById("pathFrom").value = a.address; toast("path start set"); };
   document.getElementById("setBBtn").onclick = () => { document.getElementById("pathTo").value = a.address; toast("path end set"); };
   document.getElementById("anSave").onclick = () => saveAnnotation(a.address);
@@ -919,6 +986,17 @@ function wire() {
   track.addEventListener("pointerdown", (ev) => { tlStop(); tlScrub = true; try { track.setPointerCapture(ev.pointerId); } catch (_) {} curFromX(ev); });
   track.addEventListener("pointermove", (ev) => { if (tlScrub) curFromX(ev); });
   track.addEventListener("pointerup", () => { tlScrub = false; });
+  document.getElementById("feedBtn").onclick = () => {
+    const f = document.getElementById("feed");
+    if (!f.classList.contains("hidden")) return closeFeed();
+    openFeed(selected);
+  };
+  document.getElementById("feedClose").onclick = closeFeed;
+  document.getElementById("feedDir").onchange = loadFeed;
+  document.getElementById("feedSort").onchange = loadFeed;
+  const feedDebounce = () => { clearTimeout(feedTimer); feedTimer = setTimeout(loadFeed, 250); };
+  document.getElementById("feedMin").addEventListener("input", feedDebounce);
+  document.getElementById("feedSearch").addEventListener("input", feedDebounce);
   document.getElementById("fitBtn").onclick = fit;
   document.getElementById("freezeBtn").onclick = (e) => {
     frozen = !frozen; e.target.classList.toggle("active", frozen);

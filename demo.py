@@ -154,6 +154,17 @@ def main():
     bs = analyze.balance_series(conn, cid2, "eth", ex, asset="USDC")
     print(f"   {len(bs)} points; USDC balance path: " + " -> ".join(f"{p['balance']:g}" for p in bs))
 
+    hr("17. Transfers feed (filterable transaction list)")
+    f_all = analyze.transfers_feed(conn, cid2, "eth", sort="value", limit=3)
+    print(f"   all: {f_all['count']} of {f_all['total']}, largest first:")
+    for t in f_all["transfers"]:
+        print(f"     {(t['src']['label'] or t['src']['address'][:8])} -> "
+              f"{(t['dst']['label'] or t['dst']['address'][:8])}  {t['value']:g} {t['asset']} (${(t['usd'] or 0):,.0f})")
+    f_out = analyze.transfers_feed(conn, cid2, "eth", address=ex, direction="out")
+    print(f"   exploiter outflows: {f_out['total']}  ({', '.join(t['counterparty']['label'] or t['counterparty']['address'][:8] for t in f_out['transfers'])})")
+    f_usdc = analyze.transfers_feed(conn, cid2, "eth", asset="USDC", min_value=1000000)
+    print(f"   USDC >= 1M: {f_usdc['total']} transfer(s)")
+
     print("\nOK - chainscope works end to end, offline.")
 
 

@@ -607,6 +607,65 @@ def cluster(conn, case_id, chain):
             "clustered": sum(c["size"] for c in clusters), "total": len(addrs)}
 
 
+# --- transfers feed (Arkham-style transaction list) ----------------------
+
+def transfers_feed(conn, case_id, chain, address=None, asset=None,
+                   direction="all", min_value=0.0, query=None, sort="ts",
+                   limit=200):
+    """Filterable transaction list. Scope to an `address` (and `direction`
+    in/out/all relative to it), one `asset`, a `min_value`, or a `query`
+    substring over src/dst/txid; sort by time or value. Rows are enriched with
+    endpoint labels, USD value, and — when scoped — the flow direction."""
+    where = ["case_id=?", "chain=?"]
+    params = [case_id, chain]
+    if asset:
+        where.append("asset=?"); params.append(asset)
+    if address:
+        if direction == "in":
+            where.append("dst=?"); params.append(address)
+        elif direction == "out":
+            where.append("src=?"); params.append(address)
+        else:
+            where.append("(src=? OR dst=?)"); params += [address, address]
+    if min_value:
+        try:
+            where.append("value>=?"); params.append(float(min_value))
+        except (TypeError, ValueError):
+            pass
+    if query:
+        like = f"%{query}%"
+        where.append("(src LIKE ? OR dst LIKE ? OR txid LIKE ?)")
+        params += [like, like, like]
+    wc = " AND ".join(where)
+    total = conn.execute(
+        f"SELECT COUNT(*) n FROM chain_transfers WHERE {wc}", params).fetchone()["n"]
+    order = "value DESC, ts DESC" if sort == "value" else "ts DESC, id DESC"
+    rows = conn.execute(
+        f"SELECT txid, src, dst, value, asset, ts, block FROM chain_transfers "
+        f"WHERE {wc} ORDER BY {order} LIMIT ?", params + [int(limit)]).fetchall()
+
+    prices = store.prices(conn, case_id)
+    lab = {a["address"]: a for a in store.list_addresses(conn, case_id, chain)}
+
+    def side(addr):
+        a = lab.get(addr, {})
+        return {"address": addr, "label": a.get("label"),
+                "category": a.get("category"), "risk": a.get("risk", "none")}
+
+    out = []
+    for r in rows:
+        row = {"txid": r["txid"], "value": r["value"], "asset": r["asset"],
+               "ts": r["ts"], "block": r["block"],
+               "usd": usd_of(prices, r["asset"], r["value"]),
+               "src": side(r["src"]), "dst": side(r["dst"])}
+        if address:
+            row["direction"] = "in" if r["dst"] == address else "out"
+            row["counterparty"] = row["src"] if r["dst"] == address else row["dst"]
+        out.append(row)
+    return {"transfers": out, "count": len(out), "total": total,
+            "address": address, "asset": asset, "direction": direction, "sort": sort}
+
+
 # --- entity rollup dashboard (Arkham-style "entity page") ----------------
 
 def entity_summary(conn, case_id, chain, cluster_id):

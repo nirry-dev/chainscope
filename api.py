@@ -235,6 +235,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, analyze.asset_summary(
                     conn, cid, chain, asset=q.get("asset", [None])[0] or None))
 
+            if sub == ["transfers"]:
+                return self._json(200, analyze.transfers_feed(
+                    conn, cid, chain,
+                    address=q.get("address", [None])[0] or None,
+                    asset=q.get("asset", [None])[0] or None,
+                    direction=q.get("direction", ["all"])[0],
+                    min_value=float(q.get("min", ["0"])[0] or 0),
+                    query=q.get("q", [None])[0] or None,
+                    sort=q.get("sort", ["ts"])[0],
+                    limit=min(int(q.get("limit", ["200"])[0] or 200), 1000)))
+
             if sub == ["path"]:
                 src, dst = q.get("from", [None])[0], q.get("to", [None])[0]
                 if not src or not dst:

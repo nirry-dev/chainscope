@@ -140,6 +140,7 @@
         <button id="zoomOutBtn" class="tool" title="Zoom out">−</button>
         <button id="fitBtn" class="tool" title="Fit to view">⤢</button>
         <button id="freezeBtn" class="tool" title="Pause layout">❚❚</button>
+        <button id="feedBtn" class="tool" title="Transfers feed">☰</button>
       </div>
 
       <div class="legend" id="legend"></div>
@@ -151,6 +152,28 @@
           <div id="tlCursor" class="tl-cursor"></div>
         </div>
         <div class="tl-readout" id="tlReadout"></div>
+      </div>
+
+      <div id="feed" class="feed hidden">
+        <div class="feed-head">
+          <span class="feed-title" id="feedTitle">Transfers</span>
+          <div class="feed-filters">
+            <select id="feedDir" class="feed-ctrl" title="Direction">
+              <option value="all">all</option>
+              <option value="in">in ←</option>
+              <option value="out">out →</option>
+            </select>
+            <input id="feedMin" class="feed-ctrl feed-min" placeholder="min value" />
+            <input id="feedSearch" class="feed-ctrl feed-search" placeholder="address or txid…" autocomplete="off" />
+            <select id="feedSort" class="feed-ctrl" title="Sort by">
+              <option value="ts">newest</option>
+              <option value="value">largest</option>
+            </select>
+          </div>
+          <span class="feed-count" id="feedCount"></span>
+          <button id="feedClose" class="tool" title="Close feed">✕</button>
+        </div>
+        <div class="feed-body"><table class="feed-tbl"><tbody id="feedRows"></tbody></table></div>
       </div>
 
       <div id="tooltip" class="tooltip"></div>
