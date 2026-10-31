@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chainscope"
+version = "0.1.0"
+description = "Read-only blockchain transaction & wallet analyzer / visualizer (on-chain OSINT and fund tracing)"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+keywords = ["blockchain", "osint", "forensics", "ethereum", "bitcoin", "visualization", "aml"]
+# Core app is pure standard library — no runtime dependencies.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/nirry-dev/chainscope"
+Issues = "https://github.com/nirry-dev/chainscope/issues"
+Changelog = "https://github.com/nirry-dev/chainscope/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+chainscope = "chainscope.cli:main"
+
+[tool.setuptools]
+packages = ["chainscope"]
+
+[tool.setuptools.package-data]
+chainscope = ["samples/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
